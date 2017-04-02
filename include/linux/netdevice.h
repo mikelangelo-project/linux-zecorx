@@ -1306,6 +1306,8 @@ struct net_device_ops {
 						       int needed_headroom);
 	int			(*ndo_xdp)(struct net_device *dev,
 					   struct netdev_xdp *xdp);
+	int			(*ndo_post_rx_buffer)(struct net_device *dev,
+						       struct sk_buff *skb);
 };
 
 /**
