@@ -9147,6 +9147,12 @@ ixgbe_features_check(struct sk_buff *skb, struct net_device *dev,
 	return features;
 }
 
+static int ixgbe_post_rx_buffer (struct net_device *dev, struct sk_buff *skb)
+{
+	printk(KERN_INFO "entering ixgbe_post_rx_buffer 1, dev = %p, skb = %p\n", dev, skb);
+        return 0;
+}
+
 static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_open		= ixgbe_open,
 	.ndo_stop		= ixgbe_close,
@@ -9195,6 +9201,7 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_udp_tunnel_add	= ixgbe_add_vxlan_port,
 	.ndo_udp_tunnel_del	= ixgbe_del_vxlan_port,
 	.ndo_features_check	= ixgbe_features_check,
+	.ndo_post_rx_buffer	= ixgbe_post_rx_buffer,
 };
 
 /**

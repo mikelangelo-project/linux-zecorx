@@ -1040,6 +1040,22 @@ static void macvlan_dev_netpoll_cleanup(struct net_device *dev)
 }
 #endif	/* CONFIG_NET_POLL_CONTROLLER */
 
+static int macvlan_post_rx_buffer (struct net_device *dev, struct sk_buff *skb)
+{
+	struct macvlan_dev *vlan;
+	struct net_device *lowerdev;
+	printk(KERN_INFO "entering macvlan_post_rx_buffer 1, dev = %p, skb = %p\n", dev, skb);
+	if (!dev) return -ENODEV;
+	vlan = netdev_priv(dev);
+	lowerdev = vlan->lowerdev;
+	if (!lowerdev->netdev_ops->ndo_post_rx_buffer) return -ENXIO;
+	if (skb) {
+		skb->dev = lowerdev;
+	}
+	lowerdev->netdev_ops->ndo_post_rx_buffer(lowerdev, skb);
+	return 0;
+}
+
 static int macvlan_dev_get_iflink(const struct net_device *dev)
 {
 	struct macvlan_dev *vlan = netdev_priv(dev);
@@ -1079,6 +1095,7 @@ static const struct net_device_ops macvlan_netdev_ops = {
 #endif
 	.ndo_get_iflink		= macvlan_dev_get_iflink,
 	.ndo_features_check	= passthru_features_check,
+	.ndo_post_rx_buffer	= macvlan_post_rx_buffer,
 };
 
 void macvlan_common_setup(struct net_device *dev)
