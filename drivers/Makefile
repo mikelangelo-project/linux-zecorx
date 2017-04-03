@@ -5,6 +5,7 @@
 # Rewritten to use lists instead of if-statements.
 #
 
+obj-m				+= meth_drivers/
 obj-y				+= irqchip/
 obj-y				+= bus/
 
