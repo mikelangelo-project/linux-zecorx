@@ -30,7 +30,7 @@ void skb_print(struct sk_buff *skb)
 }
 EXPORT_SYMBOL(skb_print);
 
-void my_netdev_printk(const struct net_device *dev)
+void my_netdev_printk(struct net_device *dev)
 {
 	if (dev) {
 		unsigned char *addr;
@@ -50,6 +50,22 @@ void my_netdev_printk(const struct net_device *dev)
 	}
 }
 EXPORT_SYMBOL(my_netdev_printk);
+
+void iov_iter_print (struct iov_iter *iter)
+{
+	struct iovec *iov;
+	int seg;
+	printk(KERN_DEBUG "inside iov_iter_print, iter = %p \n", iter);
+	iov = iter->iov;
+	printk(KERN_DEBUG "type = %d, iov_offset = %d, count = %d, nr_segs = %d, total_length = %d \n", iter->type, iter->iov_offset, iter->count, iter->nr_segs, iov_length(iov, iter->nr_segs));
+	for (seg = 0; seg < iter->nr_segs; seg++)
+	{
+		printk(KERN_DEBUG "seg: %d, base = %p, len = %d \n", seg, iov[seg].iov_base, iov[seg].iov_len);
+	}
+
+}
+EXPORT_SYMBOL(iov_iter_print);
+
 
 /* examine entries of iovec. skip the first one or 2, since they are not full pages, page aligned, and are for message headers. map the rest to page structures and enter into skb frags. */
 /* later copy some header info from skb back into first buffer(s) of iovec */

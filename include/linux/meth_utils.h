@@ -8,8 +8,9 @@
 
 
 void skb_print(struct sk_buff *skb);
-void my_netdev_printk(const struct net_device *dev);
+void my_netdev_printk(struct net_device *dev);
 int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from);
+void iov_iter_print (struct iov_iter *iter);
 
 
 

@@ -23,6 +23,8 @@
 #include <linux/virtio_net.h>
 #include <linux/skb_array.h>
 
+#include <linux/meth_utils.h>
+
 /*
  * A macvtap queue is the central object of this driver, it connects
  * an open character device to a macvlan interface. There can be
@@ -407,7 +409,7 @@ static rx_handler_result_t macvtap_handle_frame(struct sk_buff **pskb)
 		/* If we receive a partial checksum and the tap side
 		 * doesn't support checksum offload, compute the checksum.
 		 * Note: it doesn't matter which checksum feature to
-		 *        check, we either support them all or none.
+		 *	check, we either support them all or none.
 		 */
 		if (skb->ip_summed == CHECKSUM_PARTIAL &&
 		    !(features & NETIF_F_CSUM_MASK) &&
@@ -872,6 +874,44 @@ static ssize_t macvtap_do_read(struct macvtap_queue *q,
 
 	if (!iov_iter_count(to))
 		return 0;
+
+	/* KM - begin added code */
+	{
+	struct macvlan_dev *vlan;
+	struct net_device *dev;
+	vlan = rcu_dereference(q->vlan);
+	if (vlan) {
+		dev = vlan->dev;
+		if (dev) {
+			skb = NULL;
+			if (dev->netdev_ops) {
+				if (dev->netdev_ops->ndo_post_rx_buffer) {
+					int copylen;
+					size_t linear;
+					int err;
+					struct virtio_net_hdr vnet_hdr = { 0 };
+					copylen = iov_iter_count(to);
+					linear = macvtap16_to_cpu(q, vnet_hdr.hdr_len);
+					printk(KERN_ERR "macvtap_do_read, copylen = %d, linear = %d\n", copylen, linear);
+					skb = macvtap_alloc_skb(&q->sk, MACVTAP_RESERVE, copylen,
+								linear, noblock, &err);
+					if (!skb)
+						goto err1;
+
+					printk(KERN_ERR "macvtap_do_read: before map_iovec_to_skb\n");
+					iov_iter_print(to);
+					err = map_iovec_to_skb(skb, to);
+					printk(KERN_ERR "macvtap_do_read: after map_iovec_to_skb, err = %d\n", err);
+					skb_print(skb);
+					dev->netdev_ops->ndo_post_rx_buffer(dev, skb);
+					kfree_skb(skb);
+				}
+			}
+		}
+	}
+	}
+err1:
+/* KM - end added code */
 
 	while (1) {
 		if (!noblock)

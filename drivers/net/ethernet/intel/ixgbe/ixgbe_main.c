@@ -61,6 +61,8 @@
 #include "ixgbe_sriov.h"
 #include "ixgbe_model.h"
 
+#include <linux/meth_utils.h>
+
 char ixgbe_driver_name[] = "ixgbe";
 static const char ixgbe_driver_string[] =
 			      "Intel(R) 10 Gigabit PCI Express Network Driver";
@@ -9150,6 +9152,8 @@ ixgbe_features_check(struct sk_buff *skb, struct net_device *dev,
 static int ixgbe_post_rx_buffer (struct net_device *dev, struct sk_buff *skb)
 {
 	printk(KERN_INFO "entering ixgbe_post_rx_buffer 1, dev = %p, skb = %p\n", dev, skb);
+	skb_print(skb);
+	my_netdev_printk(dev);
         return 0;
 }
 
