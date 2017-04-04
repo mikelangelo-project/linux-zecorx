@@ -20,7 +20,7 @@ void skb_print(struct sk_buff *skb)
 	printk(KERN_INFO "len = %d, data_len = %d, truesize = %d dev = %p\n", skb->len, skb->data_len, skb->truesize, skb->dev);
 	printk(KERN_INFO "head = %p, data = %p, tail = %d, end = %d \n", skb->head, skb->data, skb->tail, skb->end);
 	/* print out shared info */
-	printk(KERN_INFO "nr_frags = %d, frag_list = %p \n", n_frags, shinfo->frag_list);
+	printk(KERN_INFO "nr_frags = %d, \n", n_frags);
 	for (i=0; i < n_frags; i++) {
 		frag = &shinfo->frags[i];
 		p = skb_frag_page(frag);
@@ -42,9 +42,7 @@ void my_netdev_printk(struct net_device *dev)
 			addr[2],
 			addr[3],
 			addr[4],
-			addr[5],
-			addr[6],
-			addr[7]);
+			addr[5]);
 	} else {
 		printk(KERN_INFO "NULL net_device \n");
 	}
@@ -111,7 +109,7 @@ int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from)
 		n_pages = iov[seg].iov_len / PAGE_SIZE;
 		/* get page structure for each page */
 		n_pages2 = get_user_pages_fast(iov[seg].iov_base, n_pages, 1, pages);
-		printk(KERN_DEBUG "n_pages = %d, n_pages2 = %d \n", n_pages, n_pages2);
+		/* printk(KERN_DEBUG "n_pages = %d, n_pages2 = %d \n", n_pages, n_pages2); */
 		/* map iovec segment to skb frag */
 		for (i = 0; i < n_pages2; i++) {
 			frag = &skb_shinfo(skb)->frags[frag_num];
@@ -126,8 +124,10 @@ int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from)
 			frag_num++;
 			skb_shinfo(skb)->nr_frags = frag_num;
 			/* skb_shinfo(skb)->rx_flags |= SKBRX_DEV_ZEROCOPY; */
-			if (frag_num >= MAX_SKB_FRAGS)
+			if (frag_num >= MAX_SKB_FRAGS) {
+				printk(KERN_INFO "exiting map_iovec_to_skb, reached MAX_SKB_FRAGS \n");
 				return frag_num;
+			}
 		}
 	}
 	printk(KERN_INFO "exiting map_iovec_to_skb \n");
