@@ -15,7 +15,7 @@ void skb_print(struct sk_buff *skb)
 	int n_frags = shinfo->nr_frags;
 	struct page *p;
 	void *v;
-	printk(KERN_INFO "inside skb_print, skb = %p, sock = %p \n", skb, skb->sk);
+	printk(KERN_INFO "inside skb_print, skb = %p, sock = %p, queue_mapping = %d \n", skb, skb->sk, skb_get_queue_mapping(skb));
 	if (!skb) return;
 	printk(KERN_INFO "len = %d, data_len = %d, truesize = %d dev = %p\n", skb->len, skb->data_len, skb->truesize, skb->dev);
 	printk(KERN_INFO "head = %p, data = %p, tail = %d, end = %d \n", skb->head, skb->data, skb->tail, skb->end);
@@ -30,19 +30,25 @@ void skb_print(struct sk_buff *skb)
 }
 EXPORT_SYMBOL(skb_print);
 
-void my_netdev_printk(struct net_device *dev)
+void addr_print(unsigned char *addr)
 {
-	if (dev) {
-		unsigned char *addr;
-		addr = dev->dev_addr;
-		printk(KERN_INFO "%s%s \n", netdev_name(dev), netdev_reg_state(dev));
-		printk(KERN_INFO "%2x %2x %2x %2x %2x %2x %2x %2x \n",
+	printk(KERN_INFO "%2x %2x %2x %2x %2x %2x \n",
 			addr[0],
 			addr[1],
 			addr[2],
 			addr[3],
 			addr[4],
 			addr[5]);
+}
+EXPORT_SYMBOL(addr_print);
+
+void my_netdev_printk(struct net_device *dev)
+{
+	if (dev) {
+		unsigned char *addr;
+		addr = dev->dev_addr;
+		printk(KERN_INFO "%s%s \n", netdev_name(dev), netdev_reg_state(dev));
+		addr_print(addr);
 	} else {
 		printk(KERN_INFO "NULL net_device \n");
 	}
@@ -95,7 +101,7 @@ int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from)
 	/* xxx copy headers to beginning of skb */
 
 	for (seg = 0; seg < from->nr_segs; seg++) {
-		printk(KERN_DEBUG "seg: %d, base = %p, len = %d \n", seg, iov[seg].iov_base, iov[seg].iov_len);
+		/* printk(KERN_DEBUG "seg: %d, base = %p, len = %d \n", seg, iov[seg].iov_base, iov[seg].iov_len); */
 		/* check if segment is page aligned and of size equal to multiple pages */
 		if (!PAGE_ALIGNED(iov[seg].iov_base)) {
 			/* not page aligned */
@@ -118,7 +124,7 @@ int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from)
 			skb_frag_size_set(frag, PAGE_SIZE);
 			p = skb_frag_page(frag);
 			v = skb_frag_address(frag);
-			printk(KERN_DEBUG "frag_num = %d, page = %p, offset = %d, size = %d, page address = %p \n", frag_num, p, frag->page_offset, frag->size, v);
+			/* printk(KERN_DEBUG "frag_num = %d, page = %p, offset = %d, size = %d, page address = %p \n", frag_num, p, frag->page_offset, frag->size, v); */
 			/* fix up skb len fields */
 			/* what do we do with the pfmemalloc flag? */
 			frag_num++;
@@ -134,8 +140,6 @@ int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from)
 	return frag_num;
 }
 EXPORT_SYMBOL(map_iovec_to_skb);
-
-
 
 static int meth_init(void)
 {
