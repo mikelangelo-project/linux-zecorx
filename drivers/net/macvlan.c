@@ -34,6 +34,7 @@
 #include <net/rtnetlink.h>
 #include <net/xfrm.h>
 #include <linux/netpoll.h>
+#include <linux/meth_utils.h>
 
 #define MACVLAN_HASH_BITS	8
 #define MACVLAN_HASH_SIZE	(1<<MACVLAN_HASH_BITS)
@@ -1048,10 +1049,14 @@ static int macvlan_post_rx_buffer (struct net_device *dev, struct sk_buff *skb)
 	if (!dev) return -ENODEV;
 	vlan = netdev_priv(dev);
 	lowerdev = vlan->lowerdev;
+	my_netdev_printk(dev);
+	my_netdev_printk(lowerdev);
 	if (!lowerdev->netdev_ops->ndo_post_rx_buffer) return -ENXIO;
+	/*
 	if (skb) {
 		skb->dev = lowerdev;
 	}
+	*/
 	lowerdev->netdev_ops->ndo_post_rx_buffer(lowerdev, skb);
 	return 0;
 }
