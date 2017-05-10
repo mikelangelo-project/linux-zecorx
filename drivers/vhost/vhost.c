@@ -28,8 +28,10 @@
 #include <linux/module.h>
 #include <linux/sort.h>
 #include <linux/interval_tree_generic.h>
+#include <linux/meth_utils.h>
 
 #include "vhost.h"
+static void print_vring_desc(struct vring_desc *desc, int n);
 
 static ushort max_mem_regions = 64;
 module_param(max_mem_regions, ushort, 0444);
@@ -1930,6 +1932,8 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 	__virtio16 ring_head;
 	int ret, access;
 
+	printk(KERN_INFO "entering vhost_get_vq_desc, vq = %p \n", vq);
+	vhost_virtqueue_print(vq);
 	/* Check it isn't doing very strange things with descriptor numbers. */
 	last_avail_idx = vq->last_avail_idx;
 	if (unlikely(vhost_get_user(vq, avail_idx, &vq->avail->idx))) {
@@ -1997,7 +2001,9 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 			       i, vq->desc + i);
 			return -EFAULT;
 		}
+		print_vring_desc(&desc, 1);
 		if (desc.flags & cpu_to_vhost16(vq, VRING_DESC_F_INDIRECT)) {
+			printk(KERN_INFO "indirect descriptor \n");
 			ret = get_indirect(vq, iov, iov_size,
 					   out_num, in_num,
 					   log, log_num, &desc);
@@ -2050,6 +2056,8 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 	/* Assume notifications from guest are disabled at this point,
 	 * if they aren't we would need to update avail_event index. */
 	BUG_ON(!(vq->used_flags & VRING_USED_F_NO_NOTIFY));
+	printk(KERN_INFO "exiting vhost_get_vq_desc, vq = %p \n", vq);
+	vhost_virtqueue_print(vq);
 	return head;
 }
 EXPORT_SYMBOL_GPL(vhost_get_vq_desc);
@@ -2329,6 +2337,61 @@ struct vhost_msg_node *vhost_dequeue_msg(struct vhost_dev *dev,
 }
 EXPORT_SYMBOL_GPL(vhost_dequeue_msg);
 
+static void print_vring_desc(struct vring_desc *desc, int n)
+{
+	int i;
+	printk(KERN_INFO "entering print_vring_desc, desc = %p \n", desc);
+	printk(KERN_INFO "i, addr       len  next  \n");
+	for ( i = 0; i < n; i++) {
+		printk(KERN_INFO "%d,  %lx, %d, %d \n", i, desc[i].addr, desc[i].len, desc[i].next);
+	}
+}
+
+static void print_vring_avail(struct vring_avail *avail, int n)
+{
+	int i;
+	printk(KERN_INFO "entering print_vring_avail, avail = %p, flags = %x, idx = %d \n", avail, avail->flags, avail->idx);
+	for ( i = 0; i < n; i++) {
+		printk(KERN_INFO "%d \n", avail->ring[i]);
+	}
+}
+
+static void print_vring_used(struct vring_used *used, int n)
+{
+	int i;
+	struct vring_used_elem *elem;
+	printk(KERN_INFO "entering print_vring_used, used = %p, idx = %d \n", used, used->idx);
+	printk(KERN_INFO "i, id  len    \n");
+	for ( i = 0; i < n; i++) {
+		elem = &used->ring[i];
+		printk(KERN_INFO "%d, %d,  %d \n", i, elem->id, elem->len);
+	}
+}
+
+void vhost_virtqueue_print(struct vhost_virtqueue *vq)
+{
+	int start;
+	struct vring_desc desc;
+	int i;
+	struct iovec *iovec;
+	struct vring_avail *avail;
+
+	start = vq->last_used_idx & (vq->num - 1);
+
+	printk(KERN_INFO "entering vhost_virtqueue_print, vq = %p \n", vq);
+	printk(KERN_INFO "num = %d, desc = %p, avail = %p, used = %p \n",
+		vq->num, vq->desc, vq->avail, vq->used);
+	printk(KERN_INFO "last_avail_idx = %d, avail_idx = %d, last_used_idx = %d \n",
+		vq->last_avail_idx, vq->avail_idx, vq->last_used_idx);
+
+	for (i = 0; i < 30; i++) {
+		iovec = &vq->iov[i];
+		printk("i = %d, base = %p, len = %d \n", i, iovec->iov_base, iovec->iov_len);
+	}
+	print_vring_desc(vq->desc, 10);
+	print_vring_used(vq->used, 10);
+}
+EXPORT_SYMBOL_GPL(vhost_virtqueue_print);
 
 static int __init vhost_init(void)
 {

@@ -25,6 +25,7 @@
 #include <linux/if_tun.h>
 #include <linux/if_macvlan.h>
 #include <linux/if_vlan.h>
+#include <linux/meth_utils.h>
 
 #include <net/sock.h>
 
@@ -386,6 +387,7 @@ static void handle_tx(struct vhost_net *net)
 	hdr_size = nvq->vhost_hlen;
 	zcopy = nvq->ubufs;
 
+	printk(KERN_INFO "entering handle_tx, vq = %p, zcopy = %d \n", vq, zcopy);
 	for (;;) {
 		/* Release DMAs done buffers first */
 		if (zcopy)
@@ -418,9 +420,11 @@ static void handle_tx(struct vhost_net *net)
 			break;
 		}
 		/* Skip header. TODO: support TSO. */
+		vhost_virtqueue_print(vq);
 		len = iov_length(vq->iov, out);
 		iov_iter_init(&msg.msg_iter, WRITE, vq->iov, out, len);
 		iov_iter_advance(&msg.msg_iter, hdr_size);
+		iov_iter_print(&msg.msg_iter);
 		/* Sanity check */
 		if (!msg_data_left(&msg)) {
 			vq_err(vq, "Unexpected header len for TX: "
@@ -575,6 +579,8 @@ static int get_rx_bufs(struct vhost_virtqueue *vq,
 	 */
 	u32 uninitialized_var(len);
 
+	printk(KERN_INFO "entering get_rx_bufs, vq = %p, datalen = %d, quota = %d \n", vq, datalen, quota);
+	vhost_virtqueue_print(vq);
 	while (datalen > 0 && headcount < quota) {
 		if (unlikely(seg >= UIO_MAXIOV)) {
 			r = -ENOBUFS;
@@ -618,6 +624,8 @@ static int get_rx_bufs(struct vhost_virtqueue *vq,
 		r = UIO_MAXIOV + 1;
 		goto err;
 	}
+	printk(KERN_INFO "exiting get_rx_bufs, vq = %p \n", vq);
+	vhost_virtqueue_print(vq);
 	return headcount;
 err:
 	vhost_discard_vq_desc(vq, headcount);
@@ -652,6 +660,7 @@ static void handle_rx(struct vhost_net *net)
 	struct iov_iter fixup;
 	__virtio16 num_buffers;
 
+	printk(KERN_INFO "entering handle_rx, vq = %p \n", vq);
 	mutex_lock(&vq->mutex);
 	sock = vq->private_data;
 	if (!sock)
@@ -708,6 +717,8 @@ static void handle_rx(struct vhost_net *net)
 			 */
 			iov_iter_advance(&msg.msg_iter, vhost_hlen);
 		}
+		vhost_virtqueue_print(vq);
+		iov_iter_print(&msg.msg_iter);
 		err = sock->ops->recvmsg(sock, &msg,
 					 sock_len, MSG_DONTWAIT | MSG_TRUNC);
 		/* Userspace might have consumed the packet meanwhile:
@@ -756,6 +767,7 @@ static void handle_rx(struct vhost_net *net)
 	vhost_net_enable_vq(net, vq);
 out:
 	mutex_unlock(&vq->mutex);
+	printk(KERN_INFO "exiting handle_rx, vq = %p \n", vq);
 }
 
 static void handle_tx_kick(struct vhost_work *work)
