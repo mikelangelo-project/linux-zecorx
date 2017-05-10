@@ -7,6 +7,25 @@
 #include <linux/mm_types.h>
 #include <linux/meth_utils.h>
 
+#define MAX_BUF_PRINT	100
+
+void buf_print(void *buf, int len)
+{
+	int n_bytes;
+	unsigned char tmp_buf[MAX_BUF_PRINT];
+	int i;
+
+	n_bytes = min(len, MAX_BUF_PRINT-1);
+	memcpy(tmp_buf, buf, n_bytes);
+	tmp_buf[n_bytes] = '\0';
+	printk(KERN_INFO "inside buf_print, buf = %p, len = %d \n", buf, len);
+	for (i = 0; i < n_bytes; i++) {
+		printk(KERN_INFO "%02x ", tmp_buf[i]);
+	}
+	printk(KERN_INFO "\n");
+}
+EXPORT_SYMBOL(buf_print);
+
 void skb_print(struct sk_buff *skb)
 {
 	int i;
@@ -27,12 +46,21 @@ void skb_print(struct sk_buff *skb)
 		v = skb_frag_address(frag);
 		printk(KERN_INFO "frag_num = %d, page = %p, offset = %d, size = %d, page address = %p \n", i, p, frag->page_offset, frag->size, v);
 	}
+	buf_print(skb->data, skb->len);
+	if (n_frags) {
+		printk(KERN_INFO "printing frag \n");
+		frag = &shinfo->frags[0];
+		p = skb_frag_page(frag);
+		v = skb_frag_address(frag);
+		buf_print(v, 50);
+	}
+	printk(KERN_INFO "exiting skb_print \n");
 }
 EXPORT_SYMBOL(skb_print);
 
 void addr_print(unsigned char *addr)
 {
-	printk(KERN_INFO "%2x %2x %2x %2x %2x %2x \n",
+	printk(KERN_INFO "%02x %02x %02x %02x %02x %02x \n",
 			addr[0],
 			addr[1],
 			addr[2],
@@ -44,14 +72,19 @@ EXPORT_SYMBOL(addr_print);
 
 void my_netdev_printk(struct net_device *dev)
 {
-	if (dev) {
-		unsigned char *addr;
-		addr = dev->dev_addr;
-		printk(KERN_INFO "%s%s \n", netdev_name(dev), netdev_reg_state(dev));
-		addr_print(addr);
-	} else {
+	unsigned char *addr;
+	int i;
+	struct netdev_rx_queue *q;
+
+	if (!dev) {
 		printk(KERN_INFO "NULL net_device \n");
+		return;
 	}
+	addr = dev->dev_addr;
+	printk(KERN_INFO "%s%s \n", netdev_name(dev), netdev_reg_state(dev));
+	addr_print(addr);
+	printk(KERN_INFO "num_rx_queues = %d, real_num_rx_queues =%d, _rx = %p \n",
+			dev->num_rx_queues, dev->real_num_rx_queues, dev->_rx);
 }
 EXPORT_SYMBOL(my_netdev_printk);
 
@@ -65,6 +98,7 @@ void iov_iter_print (struct iov_iter *iter)
 	for (seg = 0; seg < iter->nr_segs; seg++)
 	{
 		printk(KERN_DEBUG "seg: %d, base = %p, len = %d \n", seg, iov[seg].iov_base, iov[seg].iov_len);
+		buf_print(iov[seg].iov_base, iov[seg].iov_len);
 	}
 
 }
@@ -93,7 +127,9 @@ int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from)
 	iov = from->iov;
 	total_length = iov_length(iov, from->nr_segs);
 
+	/*
 	printk(KERN_INFO "entering map_iovec_to_skb, total_length = %d, iov = %p, count = %d\n", total_length, iov, iov_iter_count(from));
+	*/
 
 	if (total_length < PAGE_SIZE)
 		return 0;
@@ -131,12 +167,16 @@ int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from)
 			skb_shinfo(skb)->nr_frags = frag_num;
 			/* skb_shinfo(skb)->rx_flags |= SKBRX_DEV_ZEROCOPY; */
 			if (frag_num >= MAX_SKB_FRAGS) {
+				/*
 				printk(KERN_INFO "exiting map_iovec_to_skb, reached MAX_SKB_FRAGS \n");
+				*/
 				return frag_num;
 			}
 		}
 	}
+	/*
 	printk(KERN_INFO "exiting map_iovec_to_skb \n");
+	*/
 	return frag_num;
 }
 EXPORT_SYMBOL(map_iovec_to_skb);
