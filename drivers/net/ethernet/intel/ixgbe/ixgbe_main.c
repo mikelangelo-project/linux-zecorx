@@ -600,9 +600,11 @@ static void ixgbe_dump(struct ixgbe_adapter *adapter)
 	u32 staterr;
 	int i = 0;
 
+	printk(KERN_INFO "entering ixgbe_dump, adapter = %p \n", adapter);
 	if (!netif_msg_hw(adapter))
 		return;
 
+	printk(KERN_INFO "after netif_msg_hw \n");
 	/* Print netdevice Info */
 	if (netdev) {
 		dev_info(&adapter->pdev->dev, "Net device Info\n");
@@ -1718,6 +1720,8 @@ static void ixgbe_process_skb_fields(struct ixgbe_ring *rx_ring,
 static void ixgbe_rx_skb(struct ixgbe_q_vector *q_vector,
 			 struct sk_buff *skb)
 {
+	printk(KERN_INFO "entering ixgbe_rx_skb, q_vector = %p, skb = %p \n", q_vector, skb);
+	my_netdev_printk(q_vector->adapter->netdev);
 	skb_mark_napi_id(skb, &q_vector->napi);
 	if (ixgbe_qv_busy_polling(q_vector))
 		netif_receive_skb(skb);
@@ -2006,6 +2010,15 @@ static bool ixgbe_add_rx_frag(struct ixgbe_ring *rx_ring,
 	return true;
 }
 
+void rx_buffer_print(struct ixgbe_rx_buffer *rx_buffer)
+{
+	printk(KERN_INFO "entering ixgbe_rx_buffer, rx_buffer = %p \n", rx_buffer);
+	printk(KERN_INFO "rx_buffer->skb = %p \n", rx_buffer->skb);
+	printk(KERN_INFO "rx_buffer->dma = %p \n", rx_buffer->dma);
+	printk(KERN_INFO "rx_buffer->page = %p \n", rx_buffer->page);
+	printk(KERN_INFO "rx_buffer->page_offset = %d \n", rx_buffer->page_offset);
+}
+
 static struct sk_buff *ixgbe_fetch_rx_buffer(struct ixgbe_ring *rx_ring,
 					     union ixgbe_adv_rx_desc *rx_desc)
 {
@@ -2013,7 +2026,9 @@ static struct sk_buff *ixgbe_fetch_rx_buffer(struct ixgbe_ring *rx_ring,
 	struct sk_buff *skb;
 	struct page *page;
 
+	printk(KERN_INFO "entering ixgbe_fetch_rx_buffer, rx_ring = %p, next_to_clean = %d \n", rx_ring, rx_ring->next_to_clean);
 	rx_buffer = &rx_ring->rx_buffer_info[rx_ring->next_to_clean];
+	rx_buffer_print(rx_buffer);
 	page = rx_buffer->page;
 	prefetchw(page);
 
@@ -2114,6 +2129,12 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 #endif /* IXGBE_FCOE */
 	u16 cleaned_count = ixgbe_desc_unused(rx_ring);
 
+	if ((cleaned_count) >= (IXGBE_RX_BUFFER_WRITE-1)) {
+		printk(KERN_INFO "entering ixgbe_clean_rx_irq, rx_ring = %p, budget = %d, cleaned_count = %d \n", rx_ring, budget, cleaned_count);
+		my_netdev_printk(rx_ring->netdev);
+		printk(KERN_INFO "next_to_use = %d, next_to_clean = %d \n", rx_ring->next_to_use, rx_ring->next_to_clean);
+	}
+
 	while (likely(total_rx_packets < budget)) {
 		union ixgbe_adv_rx_desc *rx_desc;
 		struct sk_buff *skb;
@@ -2209,6 +2230,7 @@ static int ixgbe_low_latency_recv(struct napi_struct *napi)
 	struct ixgbe_ring  *ring;
 	int found = 0;
 
+	printk(KERN_INFO "entering ixgbe_low_latency_recv, napi_struct = %p \n", napi);
 	if (test_bit(__IXGBE_DOWN, &adapter->state))
 		return LL_FLUSH_FAILED;
 
@@ -2823,6 +2845,7 @@ static irqreturn_t ixgbe_msix_clean_rings(int irq, void *data)
 {
 	struct ixgbe_q_vector *q_vector = data;
 
+	/* printk(KERN_INFO "entering ixgbe_msix_clean_rings, vector = %p \n", q_vector); */
 	/* EIAM disabled interrupts (on this vector) for us */
 
 	if (q_vector->rx.ring || q_vector->tx.ring)
@@ -2847,6 +2870,7 @@ int ixgbe_poll(struct napi_struct *napi, int budget)
 	int per_ring_budget, work_done = 0;
 	bool clean_complete = true;
 
+	/* printk(KERN_INFO "entering ixgbe_poll, vector = %p, budget = %d \n", q_vector, budget); */
 #ifdef CONFIG_IXGBE_DCA
 	if (adapter->flags & IXGBE_FLAG_DCA_ENABLED)
 		ixgbe_update_dca(q_vector);
@@ -2905,6 +2929,8 @@ static int ixgbe_request_msix_irqs(struct ixgbe_adapter *adapter)
 	int vector, err;
 	int ri = 0, ti = 0;
 
+	printk(KERN_INFO "entering ixgbe_request_msix_irqs \n");
+	my_netdev_printk(netdev);
 	for (vector = 0; vector < adapter->num_q_vectors; vector++) {
 		struct ixgbe_q_vector *q_vector = adapter->q_vector[vector];
 		struct msix_entry *entry = &adapter->msix_entries[vector];
@@ -2923,6 +2949,7 @@ static int ixgbe_request_msix_irqs(struct ixgbe_adapter *adapter)
 			/* skip this unused q_vector */
 			continue;
 		}
+		printk(KERN_INFO "q_vector = %p, q_vector->name = %s \n", q_vector, q_vector->name);
 		err = request_irq(entry->vector, &ixgbe_msix_clean_rings, 0,
 				  q_vector->name, q_vector);
 		if (err) {
@@ -2974,6 +3001,7 @@ static irqreturn_t ixgbe_intr(int irq, void *data)
 	struct ixgbe_q_vector *q_vector = adapter->q_vector[0];
 	u32 eicr;
 
+	printk(KERN_INFO "entering ixgbe_intr \n");
 	/*
 	 * Workaround for silicon errata #26 on 82598.  Mask the interrupt
 	 * before the read of EICR.
@@ -4288,6 +4316,21 @@ void ixgbe_full_sync_mac_table(struct ixgbe_adapter *adapter)
 }
 
 #endif
+void print_mac_table(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_mac_addr *mac_table = &adapter->mac_table[0];
+	struct ixgbe_hw *hw = &adapter->hw;
+	int i;
+
+	printk(KERN_INFO "entering print_mac_table, adapter = %p, num_entries = %d \n", adapter, hw->mac.num_rar_entries);
+	for (i = 0; i < hw->mac.num_rar_entries; i++, mac_table++) {
+		if (mac_table->state & IXGBE_MAC_STATE_IN_USE) {
+			addr_print(mac_table->addr);
+			printk("i = %d, pool = %x, state = %x \n", i, mac_table->pool, mac_table->state);
+		}
+	}
+}
+
 static void ixgbe_sync_mac_table(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_mac_addr *mac_table = &adapter->mac_table[0];
@@ -4369,6 +4412,9 @@ int ixgbe_add_mac_filter(struct ixgbe_adapter *adapter,
 	struct ixgbe_hw *hw = &adapter->hw;
 	int i;
 
+	printk(KERN_INFO "entering ixgbe_add_mac_filter, adapter = %p, pool = %d \n", adapter, pool);
+	addr_print(addr);
+
 	if (is_zero_ether_addr(addr))
 		return -EINVAL;
 
@@ -4384,6 +4430,7 @@ int ixgbe_add_mac_filter(struct ixgbe_adapter *adapter,
 
 		ixgbe_sync_mac_table(adapter);
 
+		print_mac_table(adapter);
 		return i;
 	}
 
@@ -4487,6 +4534,8 @@ void ixgbe_set_rx_mode(struct net_device *netdev)
 	netdev_features_t features = netdev->features;
 	int count;
 
+	printk(KERN_INFO "entering ixgbe_set_rx_mode, netdev = %p, features = %x \n", netdev, features);
+	my_netdev_printk(netdev);
 	/* Check for Promiscuous and All Multicast modes */
 	fctrl = IXGBE_READ_REG(hw, IXGBE_FCTRL);
 
@@ -5945,7 +5994,10 @@ static int ixgbe_setup_all_rx_resources(struct ixgbe_adapter *adapter)
 {
 	int i, err = 0;
 
+	printk(KERN_INFO "entering ixgbe_setup_all_rx_resources, adapter = %p, num_rx_queues = %d \n", adapter, adapter->num_rx_queues);
+	my_netdev_printk(adapter->netdev);
 	for (i = 0; i < adapter->num_rx_queues; i++) {
+		printk(KERN_INFO "i = %d, rx_ring[i] = %p \n", i, adapter->rx_ring[i]);
 		err = ixgbe_setup_rx_resources(adapter->rx_ring[i]);
 		if (!err)
 			continue;
@@ -6101,6 +6153,8 @@ int ixgbe_open(struct net_device *netdev)
 	struct ixgbe_hw *hw = &adapter->hw;
 	int err, queues;
 
+	printk(KERN_INFO "entering ixgbe_open, netdev = %p \n", netdev);
+	my_netdev_printk(netdev);
 	/* disallow open during test */
 	if (test_bit(__IXGBE_TESTING, &adapter->state))
 		return -EBUSY;
@@ -7808,6 +7862,10 @@ netdev_tx_t ixgbe_xmit_frame_ring(struct sk_buff *skb,
 	__be16 protocol = skb->protocol;
 	u8 hdr_len = 0;
 
+	printk(KERN_INFO "entering ixgbe_xmit_frame_ring, skb = %p, tx_ring = %p \n", skb, tx_ring);
+	skb_print(skb);
+	/*
+	*/
 	/*
 	 * need: 1 descriptor per page * PAGE_SIZE/IXGBE_MAX_DATA_PER_TXD,
 	 *       + 1 desc for skb_headlen/IXGBE_MAX_DATA_PER_TXD,
@@ -7968,6 +8026,7 @@ static int ixgbe_set_mac(struct net_device *netdev, void *p)
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct sockaddr *addr = p;
 
+	printk(KERN_INFO "entering ixgbe_set_mac, netdev = %p \n", netdev);
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EADDRNOTAVAIL;
 
@@ -7975,6 +8034,7 @@ static int ixgbe_set_mac(struct net_device *netdev, void *p)
 	memcpy(hw->mac.addr, addr->sa_data, netdev->addr_len);
 
 	ixgbe_mac_set_default_filter(adapter);
+	my_netdev_printk(netdev);
 
 	return 0;
 }
@@ -8076,6 +8136,8 @@ static void ixgbe_netpoll(struct net_device *netdev)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	int i;
 
+	printk(KERN_INFO "entering ixgbe_netpoll, netdev = %p \n", netdev);
+	my_netdev_printk(netdev);
 	/* if interface is down do nothing */
 	if (test_bit(__IXGBE_DOWN, &adapter->state))
 		return;
@@ -9152,8 +9214,11 @@ ixgbe_features_check(struct sk_buff *skb, struct net_device *dev,
 static int ixgbe_post_rx_buffer (struct net_device *dev, struct sk_buff *skb)
 {
 	printk(KERN_INFO "entering ixgbe_post_rx_buffer 1, dev = %p, skb = %p\n", dev, skb);
+	/*
 	skb_print(skb);
+	*/
 	my_netdev_printk(dev);
+	my_netdev_printk(skb->dev);
         return 0;
 }
 
@@ -9347,6 +9412,7 @@ static int ixgbe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 #endif
 	u32 eec;
 
+	printk(KERN_INFO "entering ixgbe_probe, pdev = %p \n", pdev);
 	/* Catch broken hardware that put the wrong VF device ID in
 	 * the PCIe SR-IOV capability.
 	 */
@@ -9606,6 +9672,7 @@ skip_sriov:
 
 	memcpy(netdev->dev_addr, hw->mac.perm_addr, netdev->addr_len);
 
+	my_netdev_printk(netdev);
 	if (!is_valid_ether_addr(netdev->dev_addr)) {
 		e_dev_err("invalid MAC address\n");
 		err = -EIO;
@@ -9788,6 +9855,8 @@ static void ixgbe_remove(struct pci_dev *pdev)
 		return;
 
 	netdev  = adapter->netdev;
+	printk(KERN_INFO "ixgbe_remove, pdev = %p \n", pdev);
+	my_netdev_printk(netdev);
 	ixgbe_dbg_adapter_exit(adapter);
 
 	set_bit(__IXGBE_REMOVING, &adapter->state);

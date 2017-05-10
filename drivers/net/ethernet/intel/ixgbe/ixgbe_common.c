@@ -30,6 +30,7 @@
 #include <linux/delay.h>
 #include <linux/sched.h>
 #include <linux/netdevice.h>
+#include <linux/meth_utils.h>
 
 #include "ixgbe.h"
 #include "ixgbe_common.h"
@@ -1817,6 +1818,8 @@ s32 ixgbe_set_rar_generic(struct ixgbe_hw *hw, u32 index, u8 *addr, u32 vmdq,
 	u32 rar_low, rar_high;
 	u32 rar_entries = hw->mac.num_rar_entries;
 
+	printk(KERN_INFO "entering ixgbe_set_rar_generic, index = %d, addr = %x, vmdq = %d, flags = %x \n", index, addr, vmdq, enable_addr);
+	addr_print(addr);
 	/* Make sure we are using a valid rar index range */
 	if (index >= rar_entries) {
 		hw_dbg(hw, "RAR index %d is out of range.\n", index);
@@ -1846,6 +1849,8 @@ s32 ixgbe_set_rar_generic(struct ixgbe_hw *hw, u32 index, u8 *addr, u32 vmdq,
 	if (enable_addr != 0)
 		rar_high |= IXGBE_RAH_AV;
 
+	printk(KERN_INFO "ixgbe_set_rar_generic, rar_low = %x \n", rar_low);
+	printk(KERN_INFO "ixgbe_set_rar_generic, rar_high = %x \n", rar_high);
 	IXGBE_WRITE_REG(hw, IXGBE_RAL(index), rar_low);
 	IXGBE_WRITE_REG(hw, IXGBE_RAH(index), rar_high);
 
@@ -2976,6 +2981,7 @@ s32 ixgbe_set_vmdq_generic(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
 	u32 mpsar;
 	u32 rar_entries = hw->mac.num_rar_entries;
 
+	printk(KERN_INFO "entering ixgbe_set_vmdq_generic, rar = %d, vmdq = %d \n", rar, vmdq);
 	/* Make sure we are using a valid rar index range */
 	if (rar >= rar_entries) {
 		hw_dbg(hw, "RAR index %d is out of range.\n", rar);
@@ -2984,7 +2990,9 @@ s32 ixgbe_set_vmdq_generic(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
 
 	if (vmdq < 32) {
 		mpsar = IXGBE_READ_REG(hw, IXGBE_MPSAR_LO(rar));
+		printk(KERN_INFO "ixgbe_set_vmdq_generic, mpsar = %x \n", mpsar);
 		mpsar |= BIT(vmdq);
+		printk(KERN_INFO "ixgbe_set_vmdq_generic, mpsar = %x \n", mpsar);
 		IXGBE_WRITE_REG(hw, IXGBE_MPSAR_LO(rar), mpsar);
 	} else {
 		mpsar = IXGBE_READ_REG(hw, IXGBE_MPSAR_HI(rar));

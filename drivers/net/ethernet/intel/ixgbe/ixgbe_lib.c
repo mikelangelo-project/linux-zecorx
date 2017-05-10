@@ -28,6 +28,7 @@
 
 #include "ixgbe.h"
 #include "ixgbe_sriov.h"
+#include <linux/meth_utils.h>
 
 #ifdef CONFIG_IXGBE_DCB
 /**
@@ -685,6 +686,10 @@ static void ixgbe_set_num_queues(struct ixgbe_adapter *adapter)
 	adapter->num_rx_pools = adapter->num_rx_queues;
 	adapter->num_rx_queues_per_pool = 1;
 
+	/* KM */
+	/* keep number of rx_queues to 1 */
+	/* return; */
+
 #ifdef CONFIG_IXGBE_DCB
 	if (ixgbe_set_dcb_sriov_queues(adapter))
 		return;
@@ -810,6 +815,11 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 	int ring_count, size;
 	u8 tcs = netdev_get_num_tc(adapter->netdev);
 
+	printk(KERN_INFO "entering ixgbe_alloc_q_vector, adapter = %p \n", adapter);
+	my_netdev_printk(adapter->netdev);
+	printk(KERN_INFO "v_count = %d, v_idx = %d, txr_count = %d, rxr_count = %d, rxr_idx = %d \n",
+		v_count, v_idx, txr_count, rxr_count, rxr_idx);
+
 	ring_count = txr_count + rxr_count;
 	size = sizeof(struct ixgbe_q_vector) +
 	       (sizeof(struct ixgbe_ring) * ring_count);
@@ -845,6 +855,8 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 	/* initialize NAPI */
 	netif_napi_add(adapter->netdev, &q_vector->napi,
 		       ixgbe_poll, 64);
+	printk(KERN_INFO "ixgbe_alloc_q_vector, after netid_napi_add \n");
+	my_netdev_printk(adapter->netdev);
 
 #ifdef CONFIG_NET_RX_BUSY_POLL
 	/* initialize busy poll */
