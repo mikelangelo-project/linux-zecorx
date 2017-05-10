@@ -545,8 +545,10 @@ static int macvtap_open(struct inode *inode, struct file *file)
 	struct macvtap_queue *q;
 	int err = -ENODEV;
 
+	printk(KERN_ERR "entering macvtap_open \n");
 	rtnl_lock();
 	dev = dev_get_by_macvtap_minor(iminor(inode));
+	my_netdev_printk(dev);
 	if (!dev)
 		goto err;
 
@@ -575,8 +577,12 @@ static int macvtap_open(struct inode *inode, struct file *file)
 	 * The macvlan supports zerocopy iff the lower device supports zero
 	 * copy so we don't have to look at the lower device directly.
 	 */
+	printk(KERN_ERR "macvtap_open before SOCK_ZEROCOPY \n");
 	if ((dev->features & NETIF_F_HIGHDMA) && (dev->features & NETIF_F_SG))
+	{
+		printk(KERN_ERR "macvtap_open inside SOCK_ZEROCOPY \n");
 		sock_set_flag(&q->sk, SOCK_ZEROCOPY);
+	}
 
 	err = -ENOMEM;
 	if (skb_array_init(&q->skb_array, dev->tx_queue_len, GFP_KERNEL))
@@ -677,6 +683,10 @@ static ssize_t macvtap_get_user(struct macvtap_queue *q, struct msghdr *m,
 	size_t linear;
 	ssize_t n;
 
+	printk(KERN_ERR "entering macvtap_get_user \n");
+	iov_iter_print(from);
+	/*
+	*/
 	if (q->flags & IFF_VNET_HDR) {
 		vnet_hdr_len = q->vnet_hdr_sz;
 
@@ -709,6 +719,7 @@ static ssize_t macvtap_get_user(struct macvtap_queue *q, struct msghdr *m,
 	if (m && m->msg_control && sock_flag(&q->sk, SOCK_ZEROCOPY)) {
 		struct iov_iter i;
 
+		printk(KERN_ERR "macvtap_get_user SOCK_ZEROCOPY is set \n");
 		copylen = vnet_hdr.hdr_len ?
 			macvtap16_to_cpu(q, vnet_hdr.hdr_len) : GOODCOPY_LEN;
 		if (copylen > good_linear)
@@ -721,6 +732,10 @@ static ssize_t macvtap_get_user(struct macvtap_queue *q, struct msghdr *m,
 		if (iov_iter_npages(&i, INT_MAX) <= MAX_SKB_FRAGS)
 			zerocopy = true;
 	}
+	/*
+	printk(KERN_ERR "macvtap_get_user after headers, zerocopy = %d \n", zerocopy);
+	iov_iter_print(from);
+	*/
 
 	if (!zerocopy) {
 		copylen = len;
@@ -737,7 +752,15 @@ static ssize_t macvtap_get_user(struct macvtap_queue *q, struct msghdr *m,
 		goto err;
 
 	if (zerocopy)
+	{
+		printk(KERN_ERR "macvtap_get_user before zerocopy_sg_from_iter \n");
 		err = zerocopy_sg_from_iter(skb, from);
+		printk(KERN_ERR "macvtap_get_user after zerocopy_sg_from_iter \n");
+		/* 
+		iov_iter_print(from);
+		skb_print(skb);
+		*/
+	}
 	else {
 		err = skb_copy_datagram_from_iter(skb, 0, from, len);
 		if (!err && m && m->msg_control) {
@@ -745,6 +768,7 @@ static ssize_t macvtap_get_user(struct macvtap_queue *q, struct msghdr *m,
 			uarg->callback(uarg, false);
 		}
 	}
+	skb_print(skb);
 
 	if (err)
 		goto err_kfree;
@@ -776,6 +800,10 @@ static ssize_t macvtap_get_user(struct macvtap_queue *q, struct msghdr *m,
 		skb_shinfo(skb)->tx_flags |= SKBTX_DEV_ZEROCOPY;
 		skb_shinfo(skb)->tx_flags |= SKBTX_SHARED_FRAG;
 	}
+	/*
+	printk(KERN_ERR "macvtap_get_user, skb = %p, zerocopy = %d \n", skb, zerocopy);
+	skb_print(skb);
+	*/
 	if (vlan) {
 		skb->dev = vlan->dev;
 		dev_queue_xmit(skb);
@@ -817,6 +845,7 @@ static ssize_t macvtap_put_user(struct macvtap_queue *q,
 	int vlan_offset = 0;
 	int total;
 
+	printk(KERN_ERR "macvtap_put_user skb = %p \n", skb);
 	if (q->flags & IFF_VNET_HDR) {
 		struct virtio_net_hdr vnet_hdr;
 		vnet_hdr_len = q->vnet_hdr_sz;
@@ -836,6 +865,7 @@ static ssize_t macvtap_put_user(struct macvtap_queue *q,
 	}
 	total = vnet_hdr_len;
 	total += skb->len;
+	buf_print(skb->data, skb->len);
 
 	if (skb_vlan_tag_present(skb)) {
 		struct {
@@ -872,13 +902,16 @@ static ssize_t macvtap_do_read(struct macvtap_queue *q,
 	struct sk_buff *skb;
 	ssize_t ret = 0;
 
+	printk(KERN_ERR "entering macvtap_do_read: q = %p, to = %p, noblock = %d \n", q, to, noblock);
 	if (!iov_iter_count(to))
 		return 0;
 
 	/* KM - begin added code */
+/*
 	{
 	struct macvlan_dev *vlan;
 	struct net_device *dev;
+	int num_frags = 0;
 	vlan = rcu_dereference(q->vlan);
 	if (vlan) {
 		dev = vlan->dev;
@@ -892,17 +925,18 @@ static ssize_t macvtap_do_read(struct macvtap_queue *q,
 					struct virtio_net_hdr vnet_hdr = { 0 };
 					copylen = iov_iter_count(to);
 					linear = macvtap16_to_cpu(q, vnet_hdr.hdr_len);
-					printk(KERN_ERR "macvtap_do_read, copylen = %d, linear = %d\n", copylen, linear);
+					// printk(KERN_ERR "macvtap_do_read, copylen = %d, linear = %d\n", copylen, linear);
 					skb = macvtap_alloc_skb(&q->sk, MACVTAP_RESERVE, copylen,
 								linear, noblock, &err);
 					if (!skb)
 						goto err1;
 
-					printk(KERN_ERR "macvtap_do_read: before map_iovec_to_skb\n");
-					iov_iter_print(to);
-					err = map_iovec_to_skb(skb, to);
-					printk(KERN_ERR "macvtap_do_read: after map_iovec_to_skb, err = %d\n", err);
-					skb_print(skb);
+					// printk(KERN_ERR "macvtap_do_read: before map_iovec_to_skb\n");
+					// iov_iter_print(to);
+					num_frags = map_iovec_to_skb(skb, to);
+					skb->dev = dev;
+					// printk(KERN_ERR "macvtap_do_read: after map_iovec_to_skb, num_frags = %d\n", num_frags);
+					// skb_print(skb);
 					dev->netdev_ops->ndo_post_rx_buffer(dev, skb);
 					kfree_skb(skb);
 				}
@@ -933,11 +967,14 @@ err1:
 		/* Nothing to read, let's sleep */
 		schedule();
 	}
+	printk(KERN_ERR "macvtap_do_read: after skb_array_consume \n");
+	skb_print(skb);
 	if (!noblock)
 		finish_wait(sk_sleep(&q->sk), &wait);
 
 	if (skb) {
 		ret = macvtap_put_user(q, skb, to);
+		printk(KERN_ERR "macvtap_do_read: after macvtap_put_user, bytes written = %d \n", ret);
 		if (unlikely(ret < 0))
 			kfree_skb(skb);
 		else
