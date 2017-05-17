@@ -46,10 +46,15 @@ void skb_print(struct sk_buff *skb)
 		v = skb_frag_address(frag);
 		printk(KERN_INFO "frag_num = %d, page = %p, offset = %d, size = %d, page address = %p \n", i, p, frag->page_offset, frag->size, v);
 	}
-	buf_print(skb->data, skb->len);
-	if (n_frags) {
-		printk(KERN_INFO "printing frag \n");
+	buf_print(skb->data, (skb->len - skb->data_len));
+	if (n_frags > 1) {
+		printk(KERN_INFO "printing frag 0 \n");
 		frag = &shinfo->frags[0];
+		p = skb_frag_page(frag);
+		v = skb_frag_address(frag);
+		buf_print(v, 50);
+		printk(KERN_INFO "printing frag 1 \n");
+		frag = &shinfo->frags[1];
 		p = skb_frag_page(frag);
 		v = skb_frag_address(frag);
 		buf_print(v, 50);
@@ -92,13 +97,20 @@ void iov_iter_print (struct iov_iter *iter)
 {
 	struct iovec *iov;
 	int seg;
+	int sum = 0;
+	int len;
+	int total_count = 0;
 	printk(KERN_DEBUG "inside iov_iter_print, iter = %p \n", iter);
 	iov = iter->iov;
 	printk(KERN_DEBUG "type = %d, iov_offset = %d, count = %d, nr_segs = %d, total_length = %d \n", iter->type, iter->iov_offset, iter->count, iter->nr_segs, iov_length(iov, iter->nr_segs));
-	for (seg = 0; seg < iter->nr_segs; seg++)
+	total_count = iter->count + iter->iov_offset;
+	//for (seg = 0; seg < iter->nr_segs && sum < total_count; seg++)
+	for (seg = 0; seg < 3 && sum < total_count; seg++)
 	{
 		printk(KERN_DEBUG "seg: %d, base = %p, len = %d \n", seg, iov[seg].iov_base, iov[seg].iov_len);
-		buf_print(iov[seg].iov_base, iov[seg].iov_len);
+		len = min(iov[seg].iov_len, total_count - sum);
+		buf_print(iov[seg].iov_base, len);
+		sum += len;
 	}
 
 }
@@ -136,6 +148,7 @@ int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from)
 								 
 	/* xxx copy headers to beginning of skb */
 
+	/* first segment may be incomplete, and may hold message headers */
 	for (seg = 0; seg < from->nr_segs; seg++) {
 		/* printk(KERN_DEBUG "seg: %d, base = %p, len = %d \n", seg, iov[seg].iov_base, iov[seg].iov_len); */
 		/* check if segment is page aligned and of size equal to multiple pages */
