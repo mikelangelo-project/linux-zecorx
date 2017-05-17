@@ -239,12 +239,6 @@ static bool vhost_sock_zcopy_tx(struct socket *sock)
 		sock_flag(sock->sk, SOCK_ZEROCOPY);
 }
 
-static bool vhost_sock_zcopy_rx(struct socket *sock)
-{
-	return unlikely(experimental_zcopyrx) &&
-		sock_flag(sock->sk, SOCK_ZEROCOPY_RX);
-}
-
 /* In case of DMA done not in order in lower device driver for some reason.
  * upend_idx is used to track end of used idx, done_idx is used to track head
  * of used idx. Once lower device DMA done contiguously, we will signal KVM
