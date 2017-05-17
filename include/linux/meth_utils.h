@@ -14,6 +14,7 @@ void iov_iter_print (struct iov_iter *iter);
 void addr_print (unsigned char *addr);
 void buf_print(void *buf, int len);
 
+#define MSG_ZCOPY_RX 0x400000
 
 
 
