@@ -13,6 +13,7 @@ int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from);
 void iov_iter_print (struct iov_iter *iter);
 void addr_print (unsigned char *addr);
 void buf_print(void *buf, int len);
+void upmap_skb_frags(struct sk_buff *skb);
 
 #define MSG_ZCOPY_RX 0x400000
 
