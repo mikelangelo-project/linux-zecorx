@@ -909,6 +909,7 @@ static int macvtap_read_zcopy(struct macvtap_queue *q, struct iov_iter *to, int 
 	struct sk_buff *skb;
 
 	printk(KERN_INFO "entering macvtap_read_zcopy: q = %p, to = %p\n", q, to);
+	return 0;
 	vlan = rcu_dereference(q->vlan);
 	if (vlan) {
 		dev = vlan->dev;
@@ -918,26 +919,28 @@ static int macvtap_read_zcopy(struct macvtap_queue *q, struct iov_iter *to, int 
 				if (dev->netdev_ops->ndo_post_rx_buffer) {
 					int copylen;
 					size_t linear;
-					int err;
+					//int err;
 					struct virtio_net_hdr vnet_hdr = { 0 };
-					copylen = iov_iter_count(to);
 					linear = macvtap16_to_cpu(q, vnet_hdr.hdr_len);
-					// printk(KERN_INFO "macvtap_read_zcopy, copylen = %d, linear = %d\n", copylen, linear);
-					skb = macvtap_alloc_skb(&q->sk, MACVTAP_RESERVE, copylen,
-								linear, noblock, &err);
+					copylen = to->count + linear;
+					printk(KERN_INFO "macvtap_read_zcopy, copylen = %d, linear = %d\n", copylen, linear);
+					skb = alloc_skb(60, q->sk.sk_allocation);
+					//skb = macvtap_alloc_skb(&q->sk, MACVTAP_RESERVE, copylen, linear, noblock, &err);
 					if (!skb) {
-						ret = err;
+						ret = -ENOMEM;
 						goto err1;
 					}
 					ret = 0;
 
-					// printk(KERN_INFO "macvtap_read_zcopy: before map_iovec_to_skb\n");
-					// iov_iter_print(to);
+					printk(KERN_INFO "macvtap_read_zcopy: before map_iovec_to_skb\n");
+					iov_iter_print(to);
 					num_frags = map_iovec_to_skb(skb, to);
+					// xxx - somehwere we need to unpin the pages.
 					skb->dev = dev;
 					// printk(KERN_INFO "macvtap_read_zcopy: after map_iovec_to_skb, num_frags = %d\n", num_frags);
 					// skb_print(skb);
 					dev->netdev_ops->ndo_post_rx_buffer(dev, skb);
+					upmap_skb_frags(skb);
 					kfree_skb(skb);
 				}
 			}
