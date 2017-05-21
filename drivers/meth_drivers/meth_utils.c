@@ -117,7 +117,10 @@ void iov_iter_print (struct iov_iter *iter)
 EXPORT_SYMBOL(iov_iter_print);
 
 
+// xxx revise comments
 /* examine entries of iovec. skip the first one or 2, since they are not full pages, page aligned, and are for message headers. map the rest to page structures and enter into skb frags. */
+// xxx allow even non-page aligned buffer.
+// check and simplify to assume all buffers are up to one page long.
 /* later copy some header info from skb back into first buffer(s) of iovec */
 /* map only up to MAX_SKB_FRAGS pages */
 /* return number of frags - full pages */
@@ -130,69 +133,72 @@ int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from)
 	int total_length;
 	skb_frag_t *frag;
 	uint page_mask = PAGE_SIZE - 1;
-	int n_pages;
-	int n_pages2;
-	struct page *pages[MAX_SKB_FRAGS];
+	struct page *page_info;
 	int i;
 	void *v;
+	int len, offset;
 
 	iov = from->iov;
 	total_length = iov_length(iov, from->nr_segs);
 
-	/*
 	printk(KERN_INFO "entering map_iovec_to_skb, total_length = %d, iov = %p, count = %d\n", total_length, iov, iov_iter_count(from));
-	*/
+	skb_print(skb);
 
 	if (total_length < PAGE_SIZE)
 		return 0;
 								 
-	/* xxx copy headers to beginning of skb */
-
-	/* first segment may be incomplete, and may hold message headers */
+	/* first segments may be incomplete, and may hold message headers */
 	for (seg = 0; seg < from->nr_segs; seg++) {
-		/* printk(KERN_DEBUG "seg: %d, base = %p, len = %d \n", seg, iov[seg].iov_base, iov[seg].iov_len); */
-		/* check if segment is page aligned and of size equal to multiple pages */
-		if (!PAGE_ALIGNED(iov[seg].iov_base)) {
-			/* not page aligned */
-			continue;
+		printk(KERN_DEBUG "seg: %d, base = %p, len = %d \n", seg, iov[seg].iov_base, iov[seg].iov_len);
+		if (iov[seg].iov_len > PAGE_SIZE) {
+			printk(KERN_INFO "xxx segment is larger than page \n");
+			len = PAGE_SIZE;
 		}
-		if (iov[seg].iov_len & page_mask) {
-			/* not multiple page length */
-			continue;
+		else {
+			len = iov[seg].iov_len;
 		}
-		/* xxx do wih a shift */
-		n_pages = iov[seg].iov_len / PAGE_SIZE;
+
+		if (PAGE_ALIGNED(iov[seg].iov_base)) {
+			offset = 0;
+		}
+		else {
+			offset =  ((unsigned long) iov[seg].iov_base) & ~PAGE_MASK;
+		}
+		printk(KERN_DEBUG "len = %d, offset = %d \n", len, offset);
+
+
 		/* get page structure for each page */
-		n_pages2 = get_user_pages_fast(iov[seg].iov_base, n_pages, 1, pages);
-		/* printk(KERN_DEBUG "n_pages = %d, n_pages2 = %d \n", n_pages, n_pages2); */
+		// this also pins the page in memory
+		get_user_pages_fast(iov[seg].iov_base, 1, 1, &page_info);
 		/* map iovec segment to skb frag */
-		for (i = 0; i < n_pages2; i++) {
-			frag = &skb_shinfo(skb)->frags[frag_num];
-			frag->page.p = pages[i];
-			frag->page_offset = 0;
-			skb_frag_size_set(frag, PAGE_SIZE);
-			p = skb_frag_page(frag);
-			v = skb_frag_address(frag);
-			/* printk(KERN_DEBUG "frag_num = %d, page = %p, offset = %d, size = %d, page address = %p \n", frag_num, p, frag->page_offset, frag->size, v); */
-			/* fix up skb len fields */
-			/* what do we do with the pfmemalloc flag? */
-			frag_num++;
-			skb_shinfo(skb)->nr_frags = frag_num;
-			/* skb_shinfo(skb)->rx_flags |= SKBRX_DEV_ZEROCOPY; */
-			if (frag_num >= MAX_SKB_FRAGS) {
-				/*
-				printk(KERN_INFO "exiting map_iovec_to_skb, reached MAX_SKB_FRAGS \n");
-				*/
-				return frag_num;
-			}
-		}
+		skb_fill_page_desc(skb, seg, page_info, offset, len);
+		skb->data_len += len;
 	}
-	/*
+	// verify that other fields are correct: tail, end, len, etc
 	printk(KERN_INFO "exiting map_iovec_to_skb \n");
-	*/
+	skb_print(skb);
 	return frag_num;
 }
 EXPORT_SYMBOL(map_iovec_to_skb);
+
+void upmap_skb_frags(struct sk_buff *skb)
+{
+	struct skb_shared_info *shinfo = skb_shinfo(skb);
+	int n_frags = shinfo->nr_frags;
+	int i;
+	printk(KERN_INFO "inside upmap_skb_frags, skb = %p \n", skb);
+	if (!skb) return;
+	printk(KERN_INFO "len = %d, data_len = %d, truesize = %d dev = %p\n", skb->len, skb->data_len, skb->truesize, skb->dev);
+	printk(KERN_INFO "head = %p, data = %p, tail = %d, end = %d \n", skb->head, skb->data, skb->tail, skb->end);
+	/* print out shared info */
+	printk(KERN_INFO "nr_frags = %d, \n", n_frags);
+	//skb_release_data(skb);
+	// perform callback
+	for (i=0; i < n_frags; i++) {
+		skb_frag_unref(skb, i);
+	}
+}
+EXPORT_SYMBOL(upmap_skb_frags);
 
 static int meth_init(void)
 {
