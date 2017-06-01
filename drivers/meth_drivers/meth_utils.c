@@ -16,6 +16,7 @@ void buf_print(void *buf, int len)
 	int i;
 
 	n_bytes = min(len, MAX_BUF_PRINT-1);
+	if (!n_bytes) return;
 	memcpy(tmp_buf, buf, n_bytes);
 	tmp_buf[n_bytes] = '\0';
 	printk(KERN_INFO "inside buf_print, buf = %p, len = %d \n", buf, len);
@@ -47,6 +48,7 @@ void skb_print(struct sk_buff *skb)
 		printk(KERN_INFO "frag_num = %d, page = %p, offset = %d, size = %d, page address = %p \n", i, p, frag->page_offset, frag->size, v);
 	}
 	buf_print(skb->data, (skb->len - skb->data_len));
+
 	if (n_frags > 1) {
 		printk(KERN_INFO "printing frag 0 \n");
 		frag = &shinfo->frags[0];
@@ -166,12 +168,12 @@ int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from)
 		}
 		printk(KERN_DEBUG "len = %d, offset = %d \n", len, offset);
 
-
 		/* get page structure for each page */
 		// this also pins the page in memory
 		get_user_pages_fast(iov[seg].iov_base, 1, 1, &page_info);
 		/* map iovec segment to skb frag */
 		skb_fill_page_desc(skb, seg, page_info, offset, len);
+		printk(KERN_INFO "len = %d, skb->len = %d, data_len = %d, truesize = %d dev = %p\n", len, skb->len, skb->data_len, skb->truesize, skb->dev);
 		skb->data_len += len;
 	}
 	// verify that other fields are correct: tail, end, len, etc
@@ -185,7 +187,10 @@ void upmap_skb_frags(struct sk_buff *skb)
 {
 	struct skb_shared_info *shinfo = skb_shinfo(skb);
 	int n_frags = shinfo->nr_frags;
+	skb_frag_t *frag;
 	int i;
+	int len;
+
 	printk(KERN_INFO "inside upmap_skb_frags, skb = %p \n", skb);
 	if (!skb) return;
 	printk(KERN_INFO "len = %d, data_len = %d, truesize = %d dev = %p\n", skb->len, skb->data_len, skb->truesize, skb->dev);
@@ -194,9 +199,15 @@ void upmap_skb_frags(struct sk_buff *skb)
 	printk(KERN_INFO "nr_frags = %d, \n", n_frags);
 	//skb_release_data(skb);
 	// perform callback
-	for (i=0; i < n_frags; i++) {
+	for (i=n_frags-1; i >=0; i--) {
+		frag = &skb_shinfo(skb)->frags[i];
+		len = frag->size;
+		printk(KERN_INFO "unmapping frag = %d, \n", i);
 		skb_frag_unref(skb, i);
+		skb->data_len -= len;
+		shinfo->nr_frags--;
 	}
+	printk(KERN_INFO "exiting upmap_skb_frags, skb = %p \n", skb);
 }
 EXPORT_SYMBOL(upmap_skb_frags);
 

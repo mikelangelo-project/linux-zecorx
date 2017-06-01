@@ -548,7 +548,7 @@ static int macvtap_open(struct inode *inode, struct file *file)
 	printk(KERN_INFO "entering macvtap_open \n");
 	rtnl_lock();
 	dev = dev_get_by_macvtap_minor(iminor(inode));
-	my_netdev_printk(dev);
+	//my_netdev_printk(dev);
 	if (!dev)
 		goto err;
 
@@ -686,9 +686,7 @@ static ssize_t macvtap_get_user(struct macvtap_queue *q, struct msghdr *m,
 	ssize_t n;
 
 	printk(KERN_INFO "entering macvtap_get_user, len = %d \n", len);
-	iov_iter_print(from);
-	/*
-	*/
+	//iov_iter_print(from);
 	if (q->flags & IFF_VNET_HDR) {
 		vnet_hdr_len = q->vnet_hdr_sz;
 
@@ -758,10 +756,10 @@ static ssize_t macvtap_get_user(struct macvtap_queue *q, struct msghdr *m,
 	if (zerocopy)
 	{
 		printk(KERN_INFO "macvtap_get_user before zerocopy_sg_from_iter \n");
-		iov_iter_print(from);
+		//iov_iter_print(from);
 		err = zerocopy_sg_from_iter(skb, from);
 		printk(KERN_INFO "macvtap_get_user after zerocopy_sg_from_iter \n");
-		iov_iter_print(from);
+		//iov_iter_print(from);
 		/* 
 		iov_iter_print(from);
 		skb_print(skb);
@@ -774,7 +772,7 @@ static ssize_t macvtap_get_user(struct macvtap_queue *q, struct msghdr *m,
 			uarg->callback(uarg, false);
 		}
 	}
-	skb_print(skb);
+	//skb_print(skb);
 
 	if (err)
 		goto err_kfree;
@@ -871,7 +869,7 @@ static ssize_t macvtap_put_user(struct macvtap_queue *q,
 	}
 	total = vnet_hdr_len;
 	total += skb->len;
-	buf_print(skb->data, skb->len);
+	//buf_print(skb->data, skb->len);
 
 	if (skb_vlan_tag_present(skb)) {
 		struct {
@@ -909,7 +907,7 @@ static int macvtap_read_zcopy(struct macvtap_queue *q, struct iov_iter *to, int 
 	struct sk_buff *skb;
 
 	printk(KERN_INFO "entering macvtap_read_zcopy: q = %p, to = %p\n", q, to);
-	return 0;
+	return ret;
 	vlan = rcu_dereference(q->vlan);
 	if (vlan) {
 		dev = vlan->dev;
@@ -933,14 +931,16 @@ static int macvtap_read_zcopy(struct macvtap_queue *q, struct iov_iter *to, int 
 					ret = 0;
 
 					printk(KERN_INFO "macvtap_read_zcopy: before map_iovec_to_skb\n");
-					iov_iter_print(to);
+					//iov_iter_print(to);
 					num_frags = map_iovec_to_skb(skb, to);
-					// xxx - somehwere we need to unpin the pages.
 					skb->dev = dev;
-					// printk(KERN_INFO "macvtap_read_zcopy: after map_iovec_to_skb, num_frags = %d\n", num_frags);
+					printk(KERN_INFO "macvtap_read_zcopy: after map_iovec_to_skb, num_frags = %d\n", num_frags);
 					// skb_print(skb);
+					printk(KERN_INFO "macvtap_read_zcopy: before ndo_post_rx_buffer, skb = %p\n", skb);
 					dev->netdev_ops->ndo_post_rx_buffer(dev, skb);
+					printk(KERN_INFO "macvtap_read_zcopy: before upmap_skb_frags, skb = %p\n", skb);
 					upmap_skb_frags(skb);
+					printk(KERN_INFO "macvtap_read_zcopy: after upmap_skb_frags, skb = %p\n", skb);
 					kfree_skb(skb);
 				}
 			}
@@ -984,7 +984,7 @@ static ssize_t macvtap_do_read(struct macvtap_queue *q,
 		schedule();
 	}
 	printk(KERN_INFO "macvtap_do_read: after skb_array_consume \n");
-	skb_print(skb);
+	//skb_print(skb);
 	if (!noblock)
 		finish_wait(sk_sleep(&q->sk), &wait);
 
