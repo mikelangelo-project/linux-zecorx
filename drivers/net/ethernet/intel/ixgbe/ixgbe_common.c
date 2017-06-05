@@ -1819,7 +1819,7 @@ s32 ixgbe_set_rar_generic(struct ixgbe_hw *hw, u32 index, u8 *addr, u32 vmdq,
 	u32 rar_entries = hw->mac.num_rar_entries;
 
 	printk(KERN_INFO "entering ixgbe_set_rar_generic, index = %d, addr = %x, vmdq = %d, flags = %x \n", index, addr, vmdq, enable_addr);
-	addr_print(addr);
+	//addr_print(addr);
 	/* Make sure we are using a valid rar index range */
 	if (index >= rar_entries) {
 		hw_dbg(hw, "RAR index %d is out of range.\n", index);

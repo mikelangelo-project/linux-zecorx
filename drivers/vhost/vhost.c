@@ -2433,12 +2433,13 @@ void vhost_virtqueue_print(struct vhost_virtqueue *vq)
 	printk(KERN_INFO "last_avail_idx = %d, avail_idx = %d, last_used_idx = %d \n",
 		vq->last_avail_idx, vq->avail_idx, vq->last_used_idx);
 
-	for (i = 0; i < 30; i++) {
+	for (i = 0; i < 20; i++) {
 		iovec = &vq->iov[i];
 		printk("i = %d, base = %p, len = %d \n", i, iovec->iov_base, iovec->iov_len);
 	}
-	print_vring_desc(vq->desc, 10);
-	print_vring_used(vq->used, 10);
+	printk(KERN_INFO "vhost_virtqueue_print, after print iovec, vq = %p \n", vq);
+	//print_vring_desc(vq->desc, 10);
+	//print_vring_used(vq->used, 10);
 }
 EXPORT_SYMBOL_GPL(vhost_virtqueue_print);
 

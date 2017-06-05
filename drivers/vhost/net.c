@@ -676,9 +676,9 @@ static void handle_rx_zcopy(struct vhost_net *net)
 	printk(KERN_INFO "handle_rx_zcopy, head = %d, out = %d, in = %d \n", head, out, in);
 		len = iov_length(vq->iov, in);
 		iov_iter_init(&msg.msg_iter, READ, vq->iov, in, len);
-		iov_iter_print(&msg.msg_iter);
+		//iov_iter_print(&msg.msg_iter);
 		iov_iter_advance(&msg.msg_iter, hdr_size);
-		iov_iter_print(&msg.msg_iter);
+		//iov_iter_print(&msg.msg_iter);
 
 		/* KM - xxx - temporary hack */
 		zcopy_used = 1;
@@ -801,7 +801,7 @@ static void handle_rx(struct vhost_net *net)
 		/* We don't need to be notified again. */
 		iov_iter_init(&msg.msg_iter, READ, vq->iov, in, vhost_len);
 		fixup = msg.msg_iter;
-		iov_iter_print(&fixup);
+		//iov_iter_print(&fixup);
 		if (unlikely((vhost_hlen))) {
 			/* We will supply the header ourselves
 			 * TODO: support TSO.
@@ -854,7 +854,7 @@ static void handle_rx(struct vhost_net *net)
 			vhost_poll_queue(&vq->poll);
 			goto out;
 		}
-		iov_iter_print(&fixup);
+		//iov_iter_print(&fixup);
 	}
 	vhost_net_enable_vq(net, vq);
 out:
@@ -908,7 +908,8 @@ static int vhost_net_open(struct inode *inode, struct file *f)
 		/* cancel the flags for merge buffers and for indirect blocks */
 		/* xxx do this per device, and only if it will be zero-copy device */
 		vhost_net_features &= ~(1ULL << VIRTIO_NET_F_MRG_RXBUF);
-		vhost_net_features &= ~(1ULL << VIRTIO_F_ANY_LAYOUT);
+		//vhost_net_features &= ~(1ULL << VIRTIO_NET_F_CSUM);
+		//vhost_net_features &= ~(1ULL << VIRTIO_F_ANY_LAYOUT);
 		//vhost_net_features &= ~(1ULL << VIRTIO_RING_F_INDIRECT_DESC);
 	}
 	printk(KERN_INFO "vhost_net_open, vhost_net_features = %x \n", vhost_net_features);

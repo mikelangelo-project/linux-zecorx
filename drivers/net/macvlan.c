@@ -1049,8 +1049,8 @@ static int macvlan_post_rx_buffer (struct net_device *dev, struct sk_buff *skb)
 	if (!dev) return -ENODEV;
 	vlan = netdev_priv(dev);
 	lowerdev = vlan->lowerdev;
-	my_netdev_printk(dev);
-	my_netdev_printk(lowerdev);
+	//my_netdev_printk(dev);
+	//my_netdev_printk(lowerdev);
 	if (!lowerdev->netdev_ops->ndo_post_rx_buffer) return -ENXIO;
 	/*
 	if (skb) {

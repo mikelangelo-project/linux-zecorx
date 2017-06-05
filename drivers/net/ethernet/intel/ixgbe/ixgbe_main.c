@@ -4325,7 +4325,7 @@ void print_mac_table(struct ixgbe_adapter *adapter)
 	// printk(KERN_INFO "entering print_mac_table, adapter = %p, num_entries = %d \n", adapter, hw->mac.num_rar_entries);
 	for (i = 0; i < hw->mac.num_rar_entries; i++, mac_table++) {
 		if (mac_table->state & IXGBE_MAC_STATE_IN_USE) {
-			addr_print(mac_table->addr);
+			//addr_print(mac_table->addr);
 			// printk("i = %d, pool = %x, state = %x \n", i, mac_table->pool, mac_table->state);
 		}
 	}
@@ -4413,7 +4413,7 @@ int ixgbe_add_mac_filter(struct ixgbe_adapter *adapter,
 	int i;
 
 	// printk(KERN_INFO "entering ixgbe_add_mac_filter, adapter = %p, pool = %d \n", adapter, pool);
-	addr_print(addr);
+	//addr_print(addr);
 
 	if (is_zero_ether_addr(addr))
 		return -EINVAL;
@@ -4430,7 +4430,7 @@ int ixgbe_add_mac_filter(struct ixgbe_adapter *adapter,
 
 		ixgbe_sync_mac_table(adapter);
 
-		print_mac_table(adapter);
+		//print_mac_table(adapter);
 		return i;
 	}
 
@@ -4535,7 +4535,7 @@ void ixgbe_set_rx_mode(struct net_device *netdev)
 	int count;
 
 	printk(KERN_INFO "entering ixgbe_set_rx_mode, netdev = %p, features = %x \n", netdev, features);
-	my_netdev_printk(netdev);
+	//my_netdev_printk(netdev);
 	/* Check for Promiscuous and All Multicast modes */
 	fctrl = IXGBE_READ_REG(hw, IXGBE_FCTRL);
 
@@ -5995,7 +5995,7 @@ static int ixgbe_setup_all_rx_resources(struct ixgbe_adapter *adapter)
 	int i, err = 0;
 
 	printk(KERN_INFO "entering ixgbe_setup_all_rx_resources, adapter = %p, num_rx_queues = %d \n", adapter, adapter->num_rx_queues);
-	my_netdev_printk(adapter->netdev);
+	//my_netdev_printk(adapter->netdev);
 	for (i = 0; i < adapter->num_rx_queues; i++) {
 		// printk(KERN_INFO "i = %d, rx_ring[i] = %p \n", i, adapter->rx_ring[i]);
 		err = ixgbe_setup_rx_resources(adapter->rx_ring[i]);
@@ -6154,7 +6154,7 @@ int ixgbe_open(struct net_device *netdev)
 	int err, queues;
 
 	printk(KERN_INFO "entering ixgbe_open, netdev = %p \n", netdev);
-	my_netdev_printk(netdev);
+	//my_netdev_printk(netdev);
 	/* disallow open during test */
 	if (test_bit(__IXGBE_TESTING, &adapter->state))
 		return -EBUSY;
@@ -8034,7 +8034,7 @@ static int ixgbe_set_mac(struct net_device *netdev, void *p)
 	memcpy(hw->mac.addr, addr->sa_data, netdev->addr_len);
 
 	ixgbe_mac_set_default_filter(adapter);
-	my_netdev_printk(netdev);
+	//my_netdev_printk(netdev);
 
 	return 0;
 }
@@ -9214,9 +9214,9 @@ ixgbe_features_check(struct sk_buff *skb, struct net_device *dev,
 static int ixgbe_post_rx_buffer (struct net_device *dev, struct sk_buff *skb)
 {
 	printk(KERN_INFO "entering ixgbe_post_rx_buffer 1, dev = %p, skb = %p\n", dev, skb);
-	skb_print(skb);
-	my_netdev_printk(dev);
-	my_netdev_printk(skb->dev);
+	//skb_print(skb);
+	//my_netdev_printk(dev);
+	//my_netdev_printk(skb->dev);
         return 0;
 }
 
@@ -9670,7 +9670,7 @@ skip_sriov:
 
 	memcpy(netdev->dev_addr, hw->mac.perm_addr, netdev->addr_len);
 
-	my_netdev_printk(netdev);
+	//my_netdev_printk(netdev);
 	if (!is_valid_ether_addr(netdev->dev_addr)) {
 		e_dev_err("invalid MAC address\n");
 		err = -EIO;
@@ -9854,7 +9854,7 @@ static void ixgbe_remove(struct pci_dev *pdev)
 
 	netdev  = adapter->netdev;
 	printk(KERN_INFO "ixgbe_remove, pdev = %p \n", pdev);
-	my_netdev_printk(netdev);
+	//my_netdev_printk(netdev);
 	ixgbe_dbg_adapter_exit(adapter);
 
 	set_bit(__IXGBE_REMOVING, &adapter->state);
