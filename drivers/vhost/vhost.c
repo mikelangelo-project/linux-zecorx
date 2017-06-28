@@ -1964,8 +1964,8 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 	__virtio16 ring_head;
 	int ret, access;
 
-	printk(KERN_INFO "entering vhost_get_vq_desc, vq = %p \n", vq);
-	vhost_virtqueue_print(vq);
+	//printk(KERN_INFO "entering vhost_get_vq_desc, vq = %p \n", vq);
+	//vhost_virtqueue_print(vq);
 	/* Check it isn't doing very strange things with descriptor numbers. */
 	last_avail_idx = vq->last_avail_idx;
 	if (unlikely(vhost_get_user(vq, avail_idx, &vq->avail->idx))) {
@@ -2033,9 +2033,9 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 			       i, vq->desc + i);
 			return -EFAULT;
 		}
-		print_vring_desc(&desc, 1);
+		//print_vring_desc(&desc, 1);
 		if (desc.flags & cpu_to_vhost16(vq, VRING_DESC_F_INDIRECT)) {
-			printk(KERN_INFO "indirect descriptor \n");
+			//printk(KERN_INFO "indirect descriptor \n");
 			ret = get_indirect(vq, iov, iov_size,
 					   out_num, in_num,
 					   log, log_num, &desc);
@@ -2048,7 +2048,7 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 			continue;
 		}
 		else {
-			printk(KERN_INFO "not indirect descriptor \n");
+			//printk(KERN_INFO "not indirect descriptor \n");
 		}
 
 		if (desc.flags & cpu_to_vhost16(vq, VRING_DESC_F_WRITE))
@@ -2091,8 +2091,8 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 	/* Assume notifications from guest are disabled at this point,
 	 * if they aren't we would need to update avail_event index. */
 	// KM - xxx - restore this - BUG_ON(!(vq->used_flags & VRING_USED_F_NO_NOTIFY));
-	printk(KERN_INFO "exiting vhost_get_vq_desc, vq = %p \n", vq);
-	vhost_virtqueue_print(vq);
+	//printk(KERN_INFO "exiting vhost_get_vq_desc, vq = %p \n", vq);
+	//vhost_virtqueue_print(vq);
 	return head;
 }
 EXPORT_SYMBOL_GPL(vhost_get_vq_desc);
