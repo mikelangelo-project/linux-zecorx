@@ -850,8 +850,8 @@ static ssize_t macvtap_put_user(struct macvtap_queue *q,
 	int total;
 
 	printk(KERN_ERR "macvtap_put_user skb = %p \n", skb);
-	iov_iter_print(iter);
-	skb_print(skb);
+	//iov_iter_print(iter);
+	//skb_print(skb);
 	if (q->flags & IFF_VNET_HDR) {
 		struct virtio_net_hdr vnet_hdr;
 		vnet_hdr_len = q->vnet_hdr_sz;
@@ -871,7 +871,7 @@ static ssize_t macvtap_put_user(struct macvtap_queue *q,
 	}
 	total = vnet_hdr_len;
 	total += skb->len;
-	buf_print(skb->data, skb->len);
+	//buf_print(skb->data, skb->len);
 
 	if (skb_vlan_tag_present(skb)) {
 		struct {
@@ -992,7 +992,7 @@ static ssize_t macvtap_do_read(struct macvtap_queue *q,
 
 	if (skb) {
 		ret = macvtap_put_user(q, skb, to);
-		iov_iter_print(to);
+		//iov_iter_print(to);
 		printk(KERN_ERR "macvtap_do_read: after macvtap_put_user, bytes written = %d \n", ret);
 		if (unlikely(ret < 0))
 			kfree_skb(skb);

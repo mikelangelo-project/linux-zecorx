@@ -660,7 +660,7 @@ static void handle_rx_zcopy(struct vhost_net *net)
 	int err;
 
 	printk(KERN_INFO "entering handle_rx_zcopy, vq = %p \n", vq);
-	vhost_virtqueue_print(vq);
+	//vhost_virtqueue_print(vq);
 
 	sock = vq->private_data;
 	if (!sock) {
@@ -859,7 +859,7 @@ static void handle_rx(struct vhost_net *net)
 	vhost_net_enable_vq(net, vq);
 out:
 	printk(KERN_INFO "exiting handle_rx, vq = %p \n", vq);
-	vhost_virtqueue_print(vq);
+	//vhost_virtqueue_print(vq);
 	mutex_unlock(&vq->mutex);
 }
 
@@ -947,8 +947,8 @@ static int vhost_net_open(struct inode *inode, struct file *f)
 	vhost_poll_init(n->poll + VHOST_NET_VQ_RX, handle_rx_net, POLLIN, dev);
 
 	f->private_data = n;
-	vhost_virtqueue_print(vqs[VHOST_NET_VQ_RX]);
-	vhost_virtqueue_print(vqs[VHOST_NET_VQ_RX_ZCOPY]);
+	//vhost_virtqueue_print(vqs[VHOST_NET_VQ_RX]);
+	//vhost_virtqueue_print(vqs[VHOST_NET_VQ_RX_ZCOPY]);
 
 	return 0;
 }
