@@ -986,7 +986,7 @@ static ssize_t macvtap_do_read(struct macvtap_queue *q,
 		schedule();
 	}
 	printk(KERN_ERR "macvtap_do_read: after skb_array_consume \n");
-	skb_print(skb);
+	//skb_print(skb);
 	if (!noblock)
 		finish_wait(sk_sleep(&q->sk), &wait);
 
