@@ -28,6 +28,7 @@
 #include <linux/cpu.h>
 #include <linux/average.h>
 #include <net/busy_poll.h>
+#include <linux/meth_utils.h>
 
 static int napi_weight = NAPI_POLL_WEIGHT;
 module_param(napi_weight, int, 0444);
@@ -140,6 +141,9 @@ struct virtnet_info {
 
 	/* CPU hot plug notifier */
 	struct notifier_block nb;
+
+	/* zero copy */
+	bool zc;
 
 	/* Control VQ buffers: protected by the rtnl lock */
 	struct virtio_net_ctrl_hdr ctrl_hdr;
@@ -259,6 +263,7 @@ static struct sk_buff *page_to_skb(struct virtnet_info *vi,
 	unsigned int copy, hdr_len, hdr_padded_len;
 	char *p;
 
+	//printk(KERN_ERR "entering page_to_skb, rq = %p, vi = %p, page = %p, len = %d, offset = %d, truesize = %d \n", rq, vi, page, len, offset, truesize);
 	p = page_address(page) + offset;
 
 	/* copy small packet so we can reuse these pages for small data */
@@ -266,6 +271,7 @@ static struct sk_buff *page_to_skb(struct virtnet_info *vi,
 	if (unlikely(!skb))
 		return NULL;
 
+	//skb_print_short(skb);
 	hdr = skb_vnet_hdr(skb);
 
 	hdr_len = vi->hdr_len;
@@ -275,10 +281,12 @@ static struct sk_buff *page_to_skb(struct virtnet_info *vi,
 		hdr_padded_len = sizeof(struct padded_vnet_hdr);
 
 	memcpy(hdr, p, hdr_len);
+	//printk(KERN_ERR "page_to_skb, len = %d, offset = %d, p = %p \n", len, offset, p);
 
 	len -= hdr_len;
 	offset += hdr_padded_len;
 	p += hdr_padded_len;
+	//printk(KERN_ERR "page_to_skb, len = %d, offset = %d, p = %p \n", len, offset, p);
 
 	copy = len;
 	if (copy > skb_tailroom(skb))
@@ -288,6 +296,7 @@ static struct sk_buff *page_to_skb(struct virtnet_info *vi,
 	len -= copy;
 	offset += copy;
 
+	//printk(KERN_ERR "page_to_skb, len = %d, offset = %d, p = %p \n", len, offset, p);
 	if (vi->mergeable_rx_bufs) {
 		if (len)
 			skb_add_rx_frag(skb, 0, page, offset, len, truesize);
@@ -319,6 +328,57 @@ static struct sk_buff *page_to_skb(struct virtnet_info *vi,
 
 	if (page)
 		give_pages(rq, page);
+
+	return skb;
+}
+
+static struct sk_buff *receive_zc(struct virtnet_info *vi,
+					struct receive_queue *rq,
+					void *buf,
+					unsigned int len)
+{
+	struct page *page = buf;
+	struct sk_buff *skb;
+	struct virtio_net_hdr_mrg_rxbuf *hdr;
+	unsigned int hdr_len;
+	char *p;
+	int offset, copy;
+
+	//printk(KERN_ERR "entering receive_zc, rq = %p, vi = %p, buf = %p, len = %d \n", rq, vi, buf, len);
+	skb = napi_alloc_skb(&rq->napi, GOOD_COPY_LEN);
+	if (unlikely(!skb))
+		return NULL;
+	//skb_print_short(skb);
+
+	hdr = skb_vnet_hdr(skb);
+
+	hdr_len = vi->hdr_len;
+
+	p = page_address(page) + PAGE_SIZE - vi->hdr_len;
+	memcpy(hdr, p, hdr_len);
+
+	// fix up the skb counters
+	len -= hdr_len;
+	offset = 0;
+	p = page_address(page);
+	//printk(KERN_ERR "receive_zc, len = %d, offset = %d, p = %p \n", len, offset, p);
+
+	copy = len;
+	if (copy > skb_tailroom(skb))
+		copy = skb_tailroom(skb);
+	memcpy(skb_put(skb, copy), p, copy);
+
+	len -= copy;
+	offset += copy;
+
+	//skb_print(skb);
+	if (len)
+		skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags, page, offset, len, PAGE_SIZE);
+	else
+		give_pages(rq, page);
+	//skb_print(skb);
+
+	//printk(KERN_ERR "exiting receive_zc, rq = %p, vi = %p, buf = %p, len = %d \n", rq, vi, buf, len);
 
 	return skb;
 }
@@ -449,10 +509,13 @@ static void receive_buf(struct virtnet_info *vi, struct receive_queue *rq,
 	struct sk_buff *skb;
 	struct virtio_net_hdr_mrg_rxbuf *hdr;
 
+	//printk(KERN_ERR "entering receive_buf, rq = %p, vi = %p, buf = %p, len = %d \n", rq, vi, buf, len);
 	if (unlikely(len < vi->hdr_len + ETH_HLEN)) {
 		pr_debug("%s: short packet %i\n", dev->name, len);
 		dev->stats.rx_length_errors++;
-		if (vi->mergeable_rx_bufs) {
+		if (vi->zc) {
+			printk(KERN_ERR "Something bad happened here");
+		} else if (vi->mergeable_rx_bufs) {
 			unsigned long ctx = (unsigned long)buf;
 			void *base = mergeable_ctx_to_buf_address(ctx);
 			put_page(virt_to_head_page(base));
@@ -464,13 +527,17 @@ static void receive_buf(struct virtnet_info *vi, struct receive_queue *rq,
 		return;
 	}
 
-	if (vi->mergeable_rx_bufs)
+	if (vi->zc)
+		skb = receive_zc(vi, rq, buf, len);
+	else if (vi->mergeable_rx_bufs)
 		skb = receive_mergeable(dev, vi, rq, (unsigned long)buf, len);
 	else if (vi->big_packets)
 		skb = receive_big(dev, vi, rq, buf, len);
 	else
 		skb = receive_small(vi, buf, len);
 
+	//printk(KERN_ERR "receive_buf, after receive_xx, skb = %p \n", skb);
+	//skb_print(skb);
 	if (unlikely(!skb))
 		return;
 
@@ -492,16 +559,51 @@ static void receive_buf(struct virtnet_info *vi, struct receive_queue *rq,
 		goto frame_err;
 	}
 
+	//printk(KERN_ERR "receive_buf, before eth_type_trans, skb = %p \n", skb);
 	skb->protocol = eth_type_trans(skb, dev);
+	//printk(KERN_ERR "receive_buf, after eth_type_trans, skb = %p \n", skb);
 	pr_debug("Receiving skb proto 0x%04x len %i type %i\n",
 		 ntohs(skb->protocol), skb->len, skb->pkt_type);
 
+	//printk(KERN_ERR "receive_buf, before napi_gro_receive, skb = %p \n", skb);
 	napi_gro_receive(&rq->napi, skb);
 	return;
 
 frame_err:
 	dev->stats.rx_frame_errors++;
 	dev_kfree_skb(skb);
+}
+
+static int add_recvbuf_zc(struct virtnet_info *vi, struct receive_queue *rq,
+				  gfp_t gfp)
+{
+	struct page* the_page;
+	int err;
+
+	//printk(KERN_ERR "entering add_recvbuf_zc, vi = %p, rq = %p \n", vi, rq);
+	/* allocate a 4K page for data, plus the virtio headers at the end */
+	the_page = get_a_page(rq, gfp);
+	if (!the_page)
+	{
+		return -ENOMEM;
+	}
+	the_page->private = NULL;
+
+	sg_init_table(rq->sg, 2);
+
+	/* stuff the virtio headers into the end of the page */
+	sg_set_buf(&rq->sg[0], page_address(the_page) + PAGE_SIZE - vi->hdr_len, vi->hdr_len);
+
+	/* rq->sg[1] for data packet */
+	sg_set_buf(&rq->sg[1], page_address(the_page), PAGE_SIZE - vi->hdr_len);
+	sg_mark_end(&rq->sg[1]);
+	//scatterlist_print(rq->sg, 2);
+
+	err = virtqueue_add_inbuf(rq->vq, rq->sg, 2, the_page, gfp);
+	if (err < 0)
+		give_pages(rq, the_page);
+
+	return err;
 }
 
 static int add_recvbuf_small(struct virtnet_info *vi, struct receive_queue *rq,
@@ -512,6 +614,7 @@ static int add_recvbuf_small(struct virtnet_info *vi, struct receive_queue *rq,
 	int err;
 
 	skb = __netdev_alloc_skb_ip_align(vi->dev, GOOD_PACKET_LEN, gfp);
+
 	if (unlikely(!skb))
 		return -ENOMEM;
 
@@ -638,7 +741,9 @@ static bool try_fill_recv(struct virtnet_info *vi, struct receive_queue *rq,
 
 	gfp |= __GFP_COLD;
 	do {
-		if (vi->mergeable_rx_bufs)
+		if (vi->zc)
+			err = add_recvbuf_zc(vi, rq, gfp);
+		else if (vi->mergeable_rx_bufs)
 			err = add_recvbuf_mergeable(rq, gfp);
 		else if (vi->big_packets)
 			err = add_recvbuf_big(vi, rq, gfp);
@@ -658,8 +763,7 @@ static void skb_recv_done(struct virtqueue *rvq)
 	struct virtnet_info *vi = rvq->vdev->priv;
 	struct receive_queue *rq = &vi->rq[vq2rxq(rvq)];
 
-	printk(KERN_INFO "entering skb_recv_done \n");
-	dump_stack();
+	//printk(KERN_ERR "entering skb_recv_done \n");
 	/* Schedule NAPI, Suppress further interrupts if successful. */
 	if (napi_schedule_prep(&rq->napi)) {
 		virtqueue_disable_cb(rvq);
@@ -711,6 +815,7 @@ static int virtnet_receive(struct receive_queue *rq, int budget)
 	unsigned int len, received = 0;
 	void *buf;
 
+	//printk(KERN_ERR "entering virtnet_receive, rq = %p, budget = %d \n", rq, budget);
 	while (received < budget &&
 	       (buf = virtqueue_get_buf(rq->vq, &len)) != NULL) {
 		receive_buf(vi, rq, buf, len);
@@ -721,6 +826,7 @@ static int virtnet_receive(struct receive_queue *rq, int budget)
 		if (!try_fill_recv(vi, rq, GFP_ATOMIC))
 			schedule_delayed_work(&vi->refill, 0);
 	}
+	//printk(KERN_ERR "virtnet_receive, received = %d \n", received);
 
 	return received;
 }
@@ -738,7 +844,7 @@ static int virtnet_poll(struct napi_struct *napi, int budget)
 		r = virtqueue_enable_cb_prepare(rq->vq);
 		napi_complete_done(napi, received);
 		if (unlikely(virtqueue_poll(rq->vq, r)) &&
-		    napi_schedule_prep(napi)) {
+		     napi_schedule_prep(napi)) {
 			virtqueue_disable_cb(rq->vq);
 			__napi_schedule(napi);
 		}
@@ -1405,12 +1511,12 @@ static int virtnet_change_mtu(struct net_device *dev, int new_mtu)
 
 static const struct net_device_ops virtnet_netdev = {
 	.ndo_open            = virtnet_open,
-	.ndo_stop   	     = virtnet_close,
+	.ndo_stop            = virtnet_close,
 	.ndo_start_xmit      = start_xmit,
 	.ndo_validate_addr   = eth_validate_addr,
 	.ndo_set_mac_address = virtnet_set_mac_address,
 	.ndo_set_rx_mode     = virtnet_set_rx_mode,
-	.ndo_change_mtu	     = virtnet_change_mtu,
+	.ndo_change_mtu      = virtnet_change_mtu,
 	.ndo_get_stats64     = virtnet_stats,
 	.ndo_vlan_rx_add_vid = virtnet_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid = virtnet_vlan_rx_kill_vid,
@@ -1830,6 +1936,9 @@ static int virtnet_probe(struct virtio_device *vdev)
 
 	if (virtio_has_feature(vdev, VIRTIO_NET_F_MRG_RXBUF))
 		vi->mergeable_rx_bufs = true;
+
+	/* turn zero copy on permanently */
+	vi->zc = true;
 
 	if (virtio_has_feature(vdev, VIRTIO_NET_F_MRG_RXBUF) ||
 	    virtio_has_feature(vdev, VIRTIO_F_VERSION_1))
