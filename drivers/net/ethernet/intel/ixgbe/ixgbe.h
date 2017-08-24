@@ -232,6 +232,7 @@ enum ixgbe_ring_state_t {
 	__IXGBE_RX_RSC_ENABLED,
 	__IXGBE_RX_CSUM_UDP_ZERO_ERR,
 	__IXGBE_RX_FCOE,
+	__IXGBE_RX_EMPTY,
 };
 
 struct ixgbe_fwd_adapter {
@@ -293,6 +294,7 @@ struct ixgbe_ring {
 	};
 
 	u8 dcb_tc;
+	u8 zero_copy;
 	struct ixgbe_queue_stats stats;
 	struct u64_stats_sync syncp;
 	union {
@@ -1025,4 +1027,5 @@ netdev_tx_t ixgbe_xmit_frame_ring(struct sk_buff *skb,
 				  struct ixgbe_ring *tx_ring);
 u32 ixgbe_rss_indir_tbl_entries(struct ixgbe_adapter *adapter);
 void ixgbe_store_reta(struct ixgbe_adapter *adapter);
+void rx_ring_print(struct ixgbe_ring *rx_ring, bool extended);
 #endif /* _IXGBE_H_ */

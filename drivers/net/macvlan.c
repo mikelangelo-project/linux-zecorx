@@ -1045,20 +1045,26 @@ static int macvlan_post_rx_buffer (struct net_device *dev, struct sk_buff *skb)
 {
 	struct macvlan_dev *vlan;
 	struct net_device *lowerdev;
-	printk(KERN_INFO "entering macvlan_post_rx_buffer 1, dev = %p, skb = %p\n", dev, skb);
+	int rc;
 	if (!dev) return -ENODEV;
 	vlan = netdev_priv(dev);
 	lowerdev = vlan->lowerdev;
-	//my_netdev_printk(dev);
-	//my_netdev_printk(lowerdev);
 	if (!lowerdev->netdev_ops->ndo_post_rx_buffer) return -ENXIO;
-	/*
-	if (skb) {
-		skb->dev = lowerdev;
-	}
-	*/
-	lowerdev->netdev_ops->ndo_post_rx_buffer(lowerdev, skb);
-	return 0;
+	rc = lowerdev->netdev_ops->ndo_post_rx_buffer(lowerdev, skb);
+	return rc;
+}
+
+static int macvlan_set_zero_copy_rx(struct net_device *dev, struct net_device *base_dev)
+{
+	struct macvlan_dev *vlan;
+	struct net_device *lowerdev;
+	int rc;
+	if (!dev) return -ENODEV;
+	vlan = netdev_priv(dev);
+	lowerdev = vlan->lowerdev;
+	if (!lowerdev->netdev_ops->ndo_set_zero_copy_rx) return -ENXIO;
+	rc = lowerdev->netdev_ops->ndo_set_zero_copy_rx(lowerdev, base_dev);
+	return rc;
 }
 
 static int macvlan_dev_get_iflink(const struct net_device *dev)
@@ -1101,6 +1107,7 @@ static const struct net_device_ops macvlan_netdev_ops = {
 	.ndo_get_iflink		= macvlan_dev_get_iflink,
 	.ndo_features_check	= passthru_features_check,
 	.ndo_post_rx_buffer	= macvlan_post_rx_buffer,
+	.ndo_set_zero_copy_rx	= macvlan_set_zero_copy_rx,
 };
 
 void macvlan_common_setup(struct net_device *dev)

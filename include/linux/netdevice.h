@@ -1308,6 +1308,7 @@ struct net_device_ops {
 					   struct netdev_xdp *xdp);
 	int			(*ndo_post_rx_buffer)(struct net_device *dev,
 						       struct sk_buff *skb);
+	int			(*ndo_set_zero_copy_rx)(struct net_device *dev, struct net_device *base_dev);
 };
 
 /**

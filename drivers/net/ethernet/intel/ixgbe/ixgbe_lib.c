@@ -815,10 +815,6 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 	int ring_count, size;
 	u8 tcs = netdev_get_num_tc(adapter->netdev);
 
-	printk(KERN_INFO "entering ixgbe_alloc_q_vector, adapter = %p \n", adapter);
-	//my_netdev_printk(adapter->netdev);
-	printk(KERN_INFO "v_count = %d, v_idx = %d, txr_count = %d, rxr_count = %d, rxr_idx = %d \n",
-		v_count, v_idx, txr_count, rxr_count, rxr_idx);
 
 	ring_count = txr_count + rxr_count;
 	size = sizeof(struct ixgbe_q_vector) +
@@ -855,8 +851,6 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 	/* initialize NAPI */
 	netif_napi_add(adapter->netdev, &q_vector->napi,
 		       ixgbe_poll, 64);
-	printk(KERN_INFO "ixgbe_alloc_q_vector, after netid_napi_add \n");
-	//my_netdev_printk(adapter->netdev);
 
 #ifdef CONFIG_NET_RX_BUSY_POLL
 	/* initialize busy poll */
