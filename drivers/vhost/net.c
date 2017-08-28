@@ -426,11 +426,9 @@ static void handle_tx(struct vhost_net *net)
 			break;
 		}
 		/* Skip header. TODO: support TSO. */
-		//vhost_virtqueue_print(vq);
 		len = iov_length(vq->iov, out);
 		iov_iter_init(&msg.msg_iter, WRITE, vq->iov, out, len);
 		iov_iter_advance(&msg.msg_iter, hdr_size);
-		//iov_iter_print(&msg.msg_iter);
 		/* Sanity check */
 		if (!msg_data_left(&msg)) {
 			vq_err(vq, "Unexpected header len for TX: "
@@ -652,11 +650,8 @@ static void post_buffers(struct vhost_net *net)
 	int len;
 	struct socket * sock;
 	int ret;
-	//struct vhost_net_ubuf_ref *ubufs;
 	struct vhost_net_ubuf_ref *uninitialized_var(ubufs);
 	struct ubuf_info *ubuf;
-	int cnt;
-
 
 	sock = vq->private_data;
 
@@ -664,11 +659,8 @@ static void post_buffers(struct vhost_net *net)
 
 	hdr_size = nvq->vhost_hlen + nvq->sock_hlen;
 
-	/* xxx free up used buffers back to guest */
-	//vhost_zerocopy_signal_used(net, vq);
-
 	/* post buffers; limit the number of buffers posted at a time in order to not block others */
-	for (cnt=8; cnt; cnt--) {
+	while (1) {
 		/* post next buffer; see if we already have one that we took off the queue and needed to wait */
 		if (vq->post_rx_full) {
 			head = vq->saved_head;
@@ -711,7 +703,6 @@ static void post_buffers(struct vhost_net *net)
 			       len, hdr_size);
 			break;
 		}
-		//len = msg_data_left(&msg);
 
 		/* use msg_control to pass vhost zerocopy ubuf info to skb */
 		ubuf = nvq->ubuf_info + nvq->upend_idx;
@@ -719,35 +710,29 @@ static void post_buffers(struct vhost_net *net)
 		ubuf->ctx = nvq->ubufs;
 		/* xxx fix this handling of descriptor number */
 		/* xxx can we dispose with the ubufs and simply place the descriptor number (head) in the msg/skb? */
-		//ubuf->desc = nvq->upend_idx;
 		ubuf->desc = head;
 		msg.msg_control = ubuf;
 		msg.msg_controllen = sizeof(ubuf);
 		ubufs = nvq->ubufs;
-		atomic_inc(&ubufs->refcount);
 		nvq->upend_idx = (nvq->upend_idx + 1) % UIO_MAXIOV;
 
 		ret = sock->ops->recvmsg(sock, &msg, 1, MSG_ZCOPY_RX_POST);
-		// update counters of vhost ring buffer. check for EAGAIN
+		/* update counters of vhost ring buffer. check for EAGAIN */
 		if (ret == -EAGAIN) {
-			printk(KERN_ERR "post_buffers, EAGAIN; saved head = %d \n", head);
+			nvq->upend_idx = ((unsigned)nvq->upend_idx - 1) % UIO_MAXIOV;
 			vq->post_rx_full = true;
 			vq->saved_head = head;
 			break;
 		}
 		else if (unlikely(ret < 0)) {
-			printk(KERN_ERR "post_buffers, error in recvmsg; do something!!! \n");
-			vhost_net_ubuf_put(ubufs);
 			nvq->upend_idx = ((unsigned)nvq->upend_idx - 1) % UIO_MAXIOV;
 			vhost_discard_vq_desc(vq, 1);
 			break;
 		}
 	}
 	vhost_enable_notify(&net->dev, vq);
-	if (!cnt) {
 		/* need to schedule posting of additional available buffers */
-		vhost_poll_queue(&vq->poll);
-	}
+		//vhost_poll_queue(&vq->poll);
 }
 
 /*
@@ -763,7 +748,6 @@ static void handle_rx_zcopy(struct vhost_net *net)
 	int ret;
 	int desc;
 	int total_len = 0;
-	int cnt;
 
 	sock = vq->private_data;
 	if (!sock) {
@@ -775,29 +759,20 @@ static void handle_rx_zcopy(struct vhost_net *net)
 
 	post_buffers(net);
 
-	//hdr_size = nvq->vhost_hlen;
 	hdr_size = nvq->vhost_hlen + nvq->sock_hlen;
-
-	/* free up used buffers back to guest */
-	//vhost_zerocopy_signal_used(net, vq);
 
 	while(true) {
 		ret = sock->ops->recvmsg(sock, NULL, 1, MSG_ZCOPY_RX | MSG_DONTWAIT);
 		if (ret < 0) {
 			break;
 		}
-		cnt = vhost_net_ubuf_put(nvq->ubufs);
-		/* need to occasionally set a poll */
-		if (cnt <= 1 || !(cnt % 16)) {
-			vhost_poll_queue(&vq->poll);
-		}
 
+		/* map descriptor number into q location */
 		len = ret & 0xffff;
 		desc  = (ret >> 16);
 		/* add back in the vhost header size into bytes consumed */
 		len += hdr_size;
 		total_len += len;
-		/* map descriptor number into q location */
 		vhost_add_used_and_signal(&net->dev, vq, desc, len);
 		if (unlikely(total_len >= VHOST_NET_WEIGHT)) {
 			vhost_poll_queue(&vq->poll);
@@ -845,7 +820,7 @@ static void handle_rx(struct vhost_net *net)
 
 	if (sock_flag(sock->sk, SOCK_ZEROCOPY_RX)) {
 		handle_rx_zcopy(net);
-		// go to out: in order to clean up and return.
+		/* go to out: in order to clean up and return */
 		goto out;
 	}
 
@@ -894,14 +869,12 @@ static void handle_rx(struct vhost_net *net)
 		/* We don't need to be notified again. */
 		iov_iter_init(&msg.msg_iter, READ, vq->iov, in, vhost_len);
 		fixup = msg.msg_iter;
-		//iov_iter_print(&fixup);
 		if (unlikely((vhost_hlen))) {
 			/* We will supply the header ourselves
 			 * TODO: support TSO.
 			 */
 			iov_iter_advance(&msg.msg_iter, vhost_hlen);
 		}
-		//vhost_virtqueue_print(vq);
 		err = sock->ops->recvmsg(sock, &msg,
 					 sock_len, MSG_DONTWAIT | MSG_TRUNC);
 		/* Userspace might have consumed the packet meanwhile:
@@ -946,7 +919,6 @@ static void handle_rx(struct vhost_net *net)
 			vhost_poll_queue(&vq->poll);
 			goto out;
 		}
-		//iov_iter_print(&fixup);
 	}
 	vhost_net_enable_vq(net, vq);
 out:
@@ -1033,7 +1005,6 @@ static int vhost_net_open(struct inode *inode, struct file *f)
 	vhost_poll_init(n->poll + VHOST_NET_VQ_RX, handle_rx_net, POLLIN, dev);
 
 	f->private_data = n;
-	//vhost_virtqueue_print(vqs[VHOST_NET_VQ_RX]);
 
 	return 0;
 }
