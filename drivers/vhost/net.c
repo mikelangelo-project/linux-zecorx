@@ -652,6 +652,7 @@ static void post_buffers(struct vhost_net *net)
 	int ret;
 	struct vhost_net_ubuf_ref *uninitialized_var(ubufs);
 	struct ubuf_info *ubuf;
+	int num_bufs_posted = 0;
 
 	sock = vq->private_data;
 
@@ -660,7 +661,7 @@ static void post_buffers(struct vhost_net *net)
 	hdr_size = nvq->vhost_hlen + nvq->sock_hlen;
 
 	/* post buffers; limit the number of buffers posted at a time in order to not block others */
-	while (1) {
+	while (true) {
 		/* post next buffer; see if we already have one that we took off the queue and needed to wait */
 		if (vq->post_rx_full) {
 			head = vq->saved_head;
@@ -729,10 +730,15 @@ static void post_buffers(struct vhost_net *net)
 			vhost_discard_vq_desc(vq, 1);
 			break;
 		}
+		num_bufs_posted++;
 	}
 	vhost_enable_notify(&net->dev, vq);
+	//printk(KERN_ERR "post_buffers: num_bufs_posted = %d \n", num_bufs_posted);
+	if (num_bufs_posted) {
 		/* need to schedule posting of additional available buffers */
-		//vhost_poll_queue(&vq->poll);
+		vhost_poll_queue(&vq->poll);
+	}
+	return;
 }
 
 /*
@@ -748,6 +754,7 @@ static void handle_rx_zcopy(struct vhost_net *net)
 	int ret;
 	int desc;
 	int total_len = 0;
+	int num_bufs_consumed = 0;
 
 	sock = vq->private_data;
 	if (!sock) {
@@ -766,6 +773,7 @@ static void handle_rx_zcopy(struct vhost_net *net)
 		if (ret < 0) {
 			break;
 		}
+		num_bufs_consumed++;
 
 		/* map descriptor number into q location */
 		len = ret & 0xffff;
@@ -779,7 +787,10 @@ static void handle_rx_zcopy(struct vhost_net *net)
 			break;
 		}
 	}
-	
+	//printk(KERN_ERR "handle_rx_zcopy: num_bufs_consumed = %d \n", num_bufs_consumed);
+	if (num_bufs_consumed) {
+		vhost_poll_queue(&vq->poll);
+	}
 	vhost_net_enable_vq(net, vq);
 out:
 	return;
