@@ -143,6 +143,7 @@ struct vhost_virtqueue {
 	bool post_rx_full;
 	int saved_head;
 	u32 busyloop_timeout;
+	int live_bufs;
 };
 
 struct vhost_msg_node {

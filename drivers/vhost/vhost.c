@@ -280,6 +280,7 @@ EXPORT_SYMBOL_GPL(vhost_has_work);
 
 void vhost_poll_queue(struct vhost_poll *poll)
 {
+	//printk(KERN_ERR "inside vhost_poll_queue, poll = %p \n", poll);
 	vhost_work_queue(poll->dev, &poll->work);
 }
 EXPORT_SYMBOL_GPL(vhost_poll_queue);
@@ -314,6 +315,7 @@ static void vhost_vq_reset(struct vhost_dev *dev,
 	vq->busyloop_timeout = 0;
 	vq->umem = NULL;
 	vq->iotlb = NULL;
+	vq->live_bufs = 0;
 }
 
 static int vhost_worker(void *data)
@@ -1284,6 +1286,7 @@ long vhost_vring_ioctl(struct vhost_dev *d, int ioctl, void __user *argp)
 	u32 idx;
 	long r;
 
+	//printk(KERN_ERR "entering vhost_vring_ioctl, d= %p, ioctl = %x, argp = %p \n", d, ioctl, argp);
 	r = get_user(idx, idxp);
 	if (r < 0)
 		return r;
@@ -1291,7 +1294,11 @@ long vhost_vring_ioctl(struct vhost_dev *d, int ioctl, void __user *argp)
 		return -ENOBUFS;
 
 	vq = d->vqs[idx];
+	//printk(KERN_ERR "vhost_vring_ioctl, vq= %p, idx = %d \n", vq, idx);
+
+	//printk(KERN_ERR "vhost_vring_ioctl, before mutex lock \n");
 	mutex_lock(&vq->mutex);
+	//printk(KERN_ERR "vhost_vring_ioctl, after mutex lock \n");
 
 	switch (ioctl) {
 	case VHOST_SET_VRING_NUM:
@@ -1310,6 +1317,8 @@ long vhost_vring_ioctl(struct vhost_dev *d, int ioctl, void __user *argp)
 			break;
 		}
 		vq->num = s.num;
+		printk(KERN_ERR "inside VHOST_SET_VRING_NUM, num = %d \n", s.num);
+		//dump_stack();
 		break;
 	case VHOST_SET_VRING_BASE:
 		/* Moving base with an active backend?
@@ -1329,6 +1338,7 @@ long vhost_vring_ioctl(struct vhost_dev *d, int ioctl, void __user *argp)
 		vq->last_avail_idx = s.num;
 		/* Forget the cached index value. */
 		vq->avail_idx = vq->last_avail_idx;
+		//printk(KERN_ERR "inside VHOST_SET_VRING_BASE, num = %d \n", s.num);
 		break;
 	case VHOST_GET_VRING_BASE:
 		s.index = idx;
@@ -1756,6 +1766,7 @@ static int translate_desc(struct vhost_virtqueue *vq, u64 addr, u32 len,
 	u64 s = 0;
 	int ret = 0;
 
+	//printk(KERN_ERR "entering translate_desc, vq = %p, addr = %p, len = %d, iov = %p, iov_size = %d \n", vq, addr, len, iov, iov_size);
 	while ((u64)len > s) {
 		u64 size;
 		if (unlikely(ret >= iov_size)) {
@@ -1785,6 +1796,7 @@ static int translate_desc(struct vhost_virtqueue *vq, u64 addr, u32 len,
 		s += size;
 		addr += size;
 		++ret;
+		//printk(KERN_ERR "translate_desc, iov_base = %p, iov_len = %d, size = %d, s = %d, ret = %d \n", _iov->iov_base, _iov->iov_len, size, s, ret);
 	}
 
 	if (ret == -EAGAIN)
@@ -1825,6 +1837,7 @@ static int get_indirect(struct vhost_virtqueue *vq,
 	struct iov_iter from;
 	int ret, access;
 
+	//printk(KERN_ERR "entering get_indirect, vq = %p \n", vq);
 	/* Sanity check */
 	if (unlikely(len % sizeof desc)) {
 		vq_err(vq, "Invalid length in indirect descriptor: "
@@ -1836,6 +1849,7 @@ static int get_indirect(struct vhost_virtqueue *vq,
 
 	ret = translate_desc(vq, vhost64_to_cpu(vq, indirect->addr), len, vq->indirect,
 			     UIO_MAXIOV, VHOST_ACCESS_RO);
+	//printk(KERN_ERR "get_indirect, ret = %d \n", ret);
 	if (unlikely(ret < 0)) {
 		if (ret != -EAGAIN)
 			vq_err(vq, "Translation failure %d in indirect.\n", ret);
@@ -1848,6 +1862,7 @@ static int get_indirect(struct vhost_virtqueue *vq,
 	read_barrier_depends();
 
 	count = len / sizeof desc;
+	//printk(KERN_ERR "get_indirect, count = %d \n", count);
 	/* Buffers are chained via a 16 bit next field, so
 	 * we can have at most 2^16 of these. */
 	if (unlikely(count > USHRT_MAX + 1)) {
@@ -1909,6 +1924,7 @@ static int get_indirect(struct vhost_virtqueue *vq,
 			*out_num += ret;
 		}
 	} while ((i = next_desc(vq, &desc)) != -1);
+	//printk(KERN_ERR "exiting get_indirect, vq = %p \n", vq);
 	return 0;
 }
 
@@ -1965,6 +1981,7 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 	}
 
 	head = vhost16_to_cpu(vq, ring_head);
+	//printk(KERN_ERR "vhost_get_vq_desc, ring_head , vq = %p, head = %d \n", vq, head);
 
 	/* If their number is silly, that's an error. */
 	if (unlikely(head >= vq->num)) {
@@ -1999,7 +2016,9 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 			       i, vq->desc + i);
 			return -EFAULT;
 		}
+		//print_vring_desc(&desc, 1);
 		if (desc.flags & cpu_to_vhost16(vq, VRING_DESC_F_INDIRECT)) {
+			//printk(KERN_ERR "indirect descriptor \n");
 			ret = get_indirect(vq, iov, iov_size,
 					   out_num, in_num,
 					   log, log_num, &desc);
@@ -2010,6 +2029,9 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 				return ret;
 			}
 			continue;
+		}
+		else {
+			//printk(KERN_ERR "not indirect descriptor \n");
 		}
 
 		if (desc.flags & cpu_to_vhost16(vq, VRING_DESC_F_WRITE))
@@ -2051,7 +2073,10 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 
 	/* Assume notifications from guest are disabled at this point,
 	 * if they aren't we would need to update avail_event index. */
+	// KM - xxx - restore this - BUG_ON(!(vq->used_flags & VRING_USED_F_NO_NOTIFY));
 	BUG_ON(!(vq->used_flags & VRING_USED_F_NO_NOTIFY));
+	//printk(KERN_ERR "exiting vhost_get_vq_desc, vq = %p, head = %d \n", vq, head);
+	//vhost_virtqueue_print(vq);
 	return head;
 }
 EXPORT_SYMBOL_GPL(vhost_get_vq_desc);
@@ -2062,7 +2087,10 @@ int rx_vhost_get_vq_desc(struct vhost_virtqueue *vq,
 		      struct vhost_log *log, unsigned int *log_num)
 {
 	int ret;
+	//printk(KERN_ERR "entering rx_vhost_get_vq_desc, vq = %p \n", vq);
+	//vhost_virtqueue_print_short(vq);
 	ret = vhost_get_vq_desc(vq, iov, iov_size, out_num, in_num, log, log_num);
+	//printk(KERN_ERR "exiting rx_vhost_get_vq_desc, vq = %p \n", vq);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(rx_vhost_get_vq_desc);
@@ -2073,7 +2101,14 @@ int zcrx_vhost_get_vq_desc(struct vhost_virtqueue *vq,
 		      struct vhost_log *log, unsigned int *log_num)
 {
 	int ret;
+	//printk(KERN_ERR "entering zcrx_vhost_get_vq_desc, vq = %p \n", vq);
+	//vhost_virtqueue_print_short(vq);
 	ret = vhost_get_vq_desc(vq, iov, iov_size, out_num, in_num, log, log_num);
+	/*
+	printk(KERN_ERR "zcrx_vhost_get_vq_desc: last_avail_idx = %d, avail_idx = %d, last_used_idx = %d, desc = %d \n",
+		vq->last_avail_idx, vq->avail_idx, vq->last_used_idx, ret);
+	*/
+	//printk(KERN_ERR "exiting zcrx_vhost_get_vq_desc, vq = %p \n", vq);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(zcrx_vhost_get_vq_desc);
@@ -2109,6 +2144,7 @@ static int __vhost_add_used_n(struct vhost_virtqueue *vq,
 	start = vq->last_used_idx & (vq->num - 1);
 	used = vq->used->ring + start;
 	if (count == 1) {
+		//printk(KERN_ERR "__vhost_add_used_n: id = %d, len = %d \n", heads[0].id, heads[0].len);
 		if (vhost_put_user(vq, heads[0].id, &used->id)) {
 			vq_err(vq, "Failed to write used id");
 			return -EFAULT;
@@ -2229,6 +2265,7 @@ void vhost_add_used_and_signal(struct vhost_dev *dev,
 			       struct vhost_virtqueue *vq,
 			       unsigned int head, int len)
 {
+	//printk(KERN_ERR "vhost_add_used_and_signal, dev = %p, vq = %p, head = %d, len = %d \n", dev, vq, head, len);
 	vhost_add_used(vq, head, len);
 	vhost_signal(dev, vq);
 }
