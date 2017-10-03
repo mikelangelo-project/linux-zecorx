@@ -1792,12 +1792,10 @@ static bool ixgbe_is_non_eop(struct ixgbe_ring *rx_ring,
 {
 	u32 ntc = rx_ring->next_to_clean + 1;
 
+	//printk(KERN_ERR "ixgbe_is_non_eop, rx_ring = %p, next_to_use = %d, next_to_clean = %d \n", rx_ring, rx_ring->next_to_use, rx_ring->next_to_clean);
 	/* fetch, update, and store next to clean */
 	ntc = (ntc < rx_ring->count) ? ntc : 0;
 	rx_ring->next_to_clean = ntc;
-	if (ntc == rx_ring->next_to_use) {
-		set_bit(__IXGBE_RX_EMPTY, &rx_ring->state);
-	}
 
 	prefetch(IXGBE_RX_DESC(rx_ring, ntc));
 
@@ -2104,7 +2102,8 @@ static struct sk_buff *ixgbe_fetch_rx_buffer_zero_copy(struct ixgbe_ring *rx_rin
 	struct skb_shared_info *shinfo;
 	skb_frag_t *frag;
 
-	printk(KERN_ERR "entering ixgbe_fetch_rx_buffer_zero_copy, rx_ring = %p, next_to_clean = %d, next_to_use = %d, queue_index = %d \n", rx_ring, rx_ring->next_to_clean, rx_ring->next_to_use, rx_ring->queue_index);
+	//printk(KERN_ERR "entering ixgbe_fetch_rx_buffer_zero_copy, rx_ring = %p, next_to_clean = %d, next_to_use = %d, queue_index = %d \n", rx_ring, rx_ring->next_to_clean, rx_ring->next_to_use, rx_ring->queue_index);
+	// xxx KM rx_desc already points to the descriptor we want to read
 
 	//rx_ring_print(rx_ring, 0);
 	rx_buffer = &rx_ring->rx_buffer_info[rx_ring->next_to_clean];
@@ -2115,7 +2114,8 @@ static struct sk_buff *ixgbe_fetch_rx_buffer_zero_copy(struct ixgbe_ring *rx_rin
 	skb = rx_buffer->skb;
 	if (!skb) {
 		printk(KERN_ERR "ixgbe_fetch_rx_buffer_zero_copy, skb is NULL \n");
-		rx_buffer_print(rx_buffer);
+		printk(KERN_ERR "entering ixgbe_fetch_rx_buffer_zero_copy, rx_ring = %p, next_to_clean = %d, next_to_use = %d, queue_index = %d \n", rx_ring, rx_ring->next_to_clean, rx_ring->next_to_use, rx_ring->queue_index);
+		//rx_buffer_print(rx_buffer);
 		return NULL;
 	}
 
@@ -2138,7 +2138,7 @@ static struct sk_buff *ixgbe_fetch_rx_buffer_zero_copy(struct ixgbe_ring *rx_rin
 	unsigned long desc;
 	ubuf = skb_shinfo(skb)->destructor_arg;
 	desc = ubuf->desc;
-	printk(KERN_ERR "ixgbe_fetch_rx_buffer_zero_copy, skb = %p, desc = %d \n", skb, desc);
+	//printk(KERN_ERR "ixgbe_fetch_rx_buffer_zero_copy, skb = %p, desc = %d \n", skb, desc);
 	//skb_print(skb);
 	}
 
@@ -2158,7 +2158,7 @@ static struct sk_buff *ixgbe_fetch_rx_buffer(struct ixgbe_ring *rx_ring,
 	struct sk_buff *skb;
 	struct page *page;
 
-	//printk(KERN_ERR "entering ixgbe_fetch_rx_buffer, rx_ring = %p, next_to_clean = %d, queue_index = %d, zero_copy = %d \n", rx_ring, rx_ring->next_to_clean, rx_ring->queue_index, rx_ring->zero_copy);
+	//printk(KERN_ERR "entering ixgbe_fetch_rx_buffer_zero_copy, rx_ring = %p, next_to_clean = %d, next_to_use = %d, queue_index = %d \n", rx_ring, rx_ring->next_to_clean, rx_ring->next_to_use, rx_ring->queue_index);
 	if (rx_ring->zero_copy) {
 		skb = ixgbe_fetch_rx_buffer_zero_copy(rx_ring, rx_desc);
 		return skb;
@@ -2268,7 +2268,7 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 #endif /* IXGBE_FCOE */
 	u16 cleaned_count = ixgbe_desc_unused(rx_ring);
 
-	//printk(KERN_ERR "entering ixgbe_clean_rx_irq, rx_ring = %p, cleaned_count = %d \n", rx_ring, cleaned_count);
+	//printk(KERN_ERR "entering ixgbe_clean_rx_irq, rx_ring = %p, cleaned_count = %d, budget = %d \n", rx_ring, cleaned_count, budget);
 	while (likely(total_rx_packets < budget)) {
 		union ixgbe_adv_rx_desc *rx_desc;
 		struct sk_buff *skb;
@@ -3943,9 +3943,6 @@ void ixgbe_configure_rx_ring(struct ixgbe_adapter *adapter,
 	ixgbe_rx_desc_queue_enable(adapter, ring);
 	if (!ring->zero_copy) {
 		ixgbe_alloc_rx_buffers(ring, ixgbe_desc_unused(ring));
-	}
-	else {
-		set_bit(__IXGBE_RX_EMPTY, &ring->state);
 	}
 }
 
@@ -7930,7 +7927,7 @@ static void ixgbe_atr(struct ixgbe_ring *ring,
 	__be16 vlan_id;
 	int l4_proto;
 
-	//printk(KERN_ERR "entering ixgbe_atr, ring = %p \n", ring);
+	printk(KERN_ERR "entering ixgbe_atr, ring = %p \n", ring);
 	/* if ring doesn't have a interrupt vector, cannot perform ATR */
 	if (!q_vector)
 		return;
@@ -9455,9 +9452,10 @@ static inline int ixgbe_get_ring_index(struct net_device *dev) {
 }
 
 static inline bool ring_is_full(struct ixgbe_ring *rx_ring){
-	if (rx_ring->next_to_clean != rx_ring->next_to_use)return false;
-	if (test_bit(__IXGBE_RX_EMPTY, &rx_ring->state)) return false;
-	return true;
+	//printk(KERN_ERR "entering ring_is_full, next_to_use = %d, next_to_clean = %d, count = %d \n", rx_ring->next_to_use, rx_ring->next_to_clean, rx_ring->count);
+	if (rx_ring->next_to_use == (rx_ring->next_to_clean-1)) return true;
+	if ((rx_ring->next_to_use == (rx_ring->count-1)) && !rx_ring->next_to_clean) return true;
+	return false;
 }
 
 static int ixgbe_post_rx_buffer(struct net_device *dev, struct sk_buff *skb)
@@ -9484,12 +9482,12 @@ static int ixgbe_post_rx_buffer(struct net_device *dev, struct sk_buff *skb)
 	i = rx_ring->next_to_use;
 	rx_desc = IXGBE_RX_DESC(rx_ring, i);
 	bi = &rx_ring->rx_buffer_info[i];
-	printk(KERN_ERR "ixgbe_post_rx_buffer, ring_index = %d, rx_ring = %p, next_to_use = %d, rx_desc = %p, bi = %p \n", ring_index, rx_ring, rx_ring->next_to_use, rx_desc, bi);
+	//printk(KERN_ERR "ixgbe_post_rx_buffer, ring_index = %d, rx_ring = %p, next_to_clean = %d, next_to_use = %d, rx_desc = %p, bi = %p \n", ring_index, rx_ring, rx_ring->next_to_clean, rx_ring->next_to_use, rx_desc, bi);
 
 	// verify that we have space in the ring buffer to place the buffer
 	if (ring_is_full(rx_ring)) {
 		// no more space
-		printk(KERN_ERR "ixgbe_post_rx_buffer, no space \n");
+		//printk(KERN_ERR "ixgbe_post_rx_buffer, no space \n");
 		return -EAGAIN;
 	}
 	page = frag->page.p;
@@ -9512,12 +9510,11 @@ static int ixgbe_post_rx_buffer(struct net_device *dev, struct sk_buff *skb)
 	else
 		rx_ring->next_to_use = i;
 
-	clear_bit(__IXGBE_RX_EMPTY, &rx_ring->state);
-
 	/* clear the status bits for the next_to_use descriptor */
 	rx_desc->wb.upper.status_error = 0;
 
 	// xxx push the h/w
+	// xxx KM - consider doing this only occasionally
 	wmb();
 	writel(i, rx_ring->tail);
 	//printk(KERN_ERR "exiting ixgbe_post_rx_buffer \n");
@@ -9545,7 +9542,6 @@ static int ixgbe_set_zero_copy_rx(struct net_device *dev, struct net_device *bas
 	//printk(KERN_ERR "ixgbe_set_zero_copy_rx, before ixgbe_clean_rx_ring \n");
 	ixgbe_clean_rx_ring(rx_ring);
 	rx_ring->zero_copy = true;
-	set_bit(__IXGBE_RX_EMPTY, &rx_ring->state);
 	//printk(KERN_ERR "ixgbe_set_zero_copy_rx, before ixgbe_configure_rx_ring \n");
 	ixgbe_configure_rx_ring(adapter, rx_ring);
         return 0;

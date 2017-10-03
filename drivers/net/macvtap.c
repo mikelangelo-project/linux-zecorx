@@ -1054,7 +1054,7 @@ static int macvtap_do_read_zero_copy(struct macvtap_queue *q, int noblock)
 		skb_shinfo(skb)->destructor_arg = NULL;
 		skb->destructor = NULL;
 		desc = ubuf->desc;
-		printk(KERN_ERR "macvtap_do_read_zero_copy: skb = %p, ubuf = %p, desc = %d \n", skb, ubuf, desc);
+		//printk(KERN_ERR "macvtap_do_read_zero_copy: skb = %p, ubuf = %p, desc = %d \n", skb, ubuf, desc);
 		//skb_print(skb);
 		//printk(KERN_ERR "macvtap_do_read_zero_copy: desc = %d \n", desc);
 		len = skb->len;
@@ -1086,7 +1086,7 @@ static int macvtap_do_read_zero_copy(struct macvtap_queue *q, int noblock)
 		//printk(KERN_ERR "macvtap_do_read_zero_copy: ret = %x \n", ret);
 	}
 	else {
-		printk(KERN_ERR "macvtap_do_read_zero_copy: NO SKB \n");
+		//printk(KERN_ERR "macvtap_do_read_zero_copy: NO SKB \n");
 	}
 	//printk(KERN_ERR "exiting macvtap_do_read_zero_copy \n");
 	return ret;

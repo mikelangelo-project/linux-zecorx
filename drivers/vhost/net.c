@@ -691,7 +691,7 @@ static void post_buffers(struct vhost_net *net)
 	struct ubuf_info *ubuf;
 	int num_bufs_posted = 0;
 
-	printk(KERN_ERR "entering post_buffers, vq = %p, live_bufs = %d \n", vq, vq->live_bufs);
+	//printk(KERN_ERR "entering post_buffers, vq = %p, live_bufs = %d \n", vq, vq->live_bufs);
 
 	sock = vq->private_data;
 
@@ -707,7 +707,7 @@ static void post_buffers(struct vhost_net *net)
 		//printk(KERN_ERR "post_buffers, post_rx_full = %d \n", vq->post_rx_full);
 		if (vq->post_rx_full) {
 			head = vq->saved_head;
-			printk(KERN_ERR "post_buffers, using saved head, desc = %d \n", head);
+			//printk(KERN_ERR "post_buffers, using saved head, desc = %d \n", head);
 			vq->post_rx_full = false;
 			/* need to re-initialize iov_iter, in, out */
 			in = 2;
@@ -762,7 +762,6 @@ static void post_buffers(struct vhost_net *net)
 		/* xxx can we dispose with the ubufs and simply place the descriptor number (head) in the msg/skb? */
 		//ubuf->desc = nvq->upend_idx;
 		ubuf->desc = head;
-		printk(KERN_ERR "post_buffers, desc = %d, live_bufs = %d \n", ubuf->desc, vq->live_bufs);
 		ubuf->callback = vhost_zerocopy_callback_zc;
 		//printk(KERN_ERR "post_buffers, upend_idx = %d, ubuf = %p, desc = %d, callback = %p \n", nvq->upend_idx, ubuf, ubuf->desc, ubuf->callback);
 		msg.msg_control = ubuf;
@@ -775,10 +774,11 @@ static void post_buffers(struct vhost_net *net)
 		//printk(KERN_ERR "post_buffers, ret = %d \n", ret);
 		// update counters of vhost ring buffer. check for EAGAIN
 		if (ret == -EAGAIN) {
-			printk(KERN_ERR "post_buffers, EAGAIN; saved head = %d \n", head);
+			//printk(KERN_ERR "post_buffers, EAGAIN; saved head = %d \n", head);
 			nvq->upend_idx = ((unsigned)nvq->upend_idx - 1) % UIO_MAXIOV;
 			vq->post_rx_full = true;
 			vq->saved_head = head;
+			vq->live_bufs--;
 			break;
 		}
 		else if (unlikely(ret < 0)) {
@@ -786,8 +786,10 @@ static void post_buffers(struct vhost_net *net)
 			//vhost_net_ubuf_put(ubufs);
 			nvq->upend_idx = ((unsigned)nvq->upend_idx - 1) % UIO_MAXIOV;
 			vhost_discard_vq_desc(vq, 1);
+			vq->live_bufs--;
 			break;
 		}
+		//printk(KERN_ERR "post_buffers, desc = %d, live_bufs = %d \n", ubuf->desc, vq->live_bufs);
 		num_bufs_posted++;
 	}
 	//printk(KERN_ERR "post_buffers: num_bufs_posted = %d \n", num_bufs_posted);
@@ -816,7 +818,7 @@ static void handle_rx_zcopy(struct vhost_net *net)
 	int total_len = 0;
 	int cnt = 0;
 
-	printk(KERN_ERR "entering handle_rx_zcopy, vq = %p \n", vq);
+	//printk(KERN_ERR "entering handle_rx_zcopy, vq = %p \n", vq);
 
 	sock = vq->private_data;
 	if (!sock) {
@@ -859,14 +861,14 @@ static void handle_rx_zcopy(struct vhost_net *net)
 		/* map descriptor number into q location */
 		vhost_add_used_and_signal(&net->dev, vq, desc, len);
 		vq->live_bufs--;
-		printk(KERN_ERR "handle_rx_zcopy, len = %d, desc = %d, live_bufs = %d \n", len, desc, vq->live_bufs);
+		//printk(KERN_ERR "handle_rx_zcopy, len = %d, desc = %d, live_bufs = %d \n", len, desc, vq->live_bufs);
 		//printk(KERN_ERR "handle_rx_zcopy, after vhost_add_used_and_signal \n");
 		/* every so often, need to enable posting of additional buffers */
 		if (cnt == 32) {
-			printk(KERN_ERR "handle_rx_zcopy, setting poll, poll = %p \n", &vq->poll);
+			//printk(KERN_ERR "handle_rx_zcopy, setting poll, poll = %p \n", &vq->poll);
 			post_buffers(net);
 			vhost_poll_queue(&vq->poll);
-			//break;
+			break;
 		}
 	}
 	

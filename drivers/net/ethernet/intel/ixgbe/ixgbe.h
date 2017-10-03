@@ -232,7 +232,6 @@ enum ixgbe_ring_state_t {
 	__IXGBE_RX_RSC_ENABLED,
 	__IXGBE_RX_CSUM_UDP_ZERO_ERR,
 	__IXGBE_RX_FCOE,
-	__IXGBE_RX_EMPTY,
 };
 
 struct ixgbe_fwd_adapter {

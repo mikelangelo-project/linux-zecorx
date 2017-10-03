@@ -423,7 +423,7 @@ static rx_handler_result_t macvlan_handle_frame(struct sk_buff **pskb)
 	if (is_multicast_ether_addr(eth->h_dest)) {
 		unsigned int hash;
 
-		printk(KERN_ERR "macvlan_handle_frame: inside is_multicast \n");
+		printk(KERN_ERR "macvlan_handle_frame: inside is_multicast, skb = %p \n", skb);
 		skb = ip_check_defrag(dev_net(skb->dev), skb, IP_DEFRAG_MACVLAN);
 		if (!skb)
 			return RX_HANDLER_CONSUMED;
