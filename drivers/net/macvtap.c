@@ -373,12 +373,6 @@ static rx_handler_result_t macvtap_handle_frame(struct sk_buff **pskb)
 	struct macvlan_dev *vlan;
 	struct macvtap_queue *q;
 	netdev_features_t features = TAP_FEATURES;
-	unsigned long desc = 0xdeadbeef;
-	int len;
-	skb_frag_t *frag;
-	struct page *page;
-	struct virtio_desc_map *hlist_entry;
-	bool desc_found = false;
 
 	//printk(KERN_ERR "entering macvtap_handle_frame, skb = %p \n", skb);
 	vlan = macvtap_get_vlan_rcu(dev);
@@ -394,6 +388,8 @@ static rx_handler_result_t macvtap_handle_frame(struct sk_buff **pskb)
 
 	if (__skb_array_full(&q->skb_array)) {
 		printk(KERN_ERR "macvtap_handle_frame, skb array is full; need to drop packet \n");
+		/* KM xxx added wakeup of vhost thread */
+		//wake_up_interruptible_poll(sk_sleep(&q->sk), POLLIN | POLLRDNORM | POLLRDBAND);
 		goto drop;
 	}
 
@@ -455,6 +451,12 @@ drop:
 	//printk(KERN_ERR "macvtap_handle_frame, drop skb = %p \n", skb);
 	/* return buffer for re-use */
 	if (sock_flag(&q->sk, SOCK_ZEROCOPY_RX)) {
+		unsigned long desc = 0xdeadbeef;
+		int len;
+		skb_frag_t *frag;
+		struct page *page;
+		struct virtio_desc_map *hlist_entry;
+		bool desc_found = false;
 		frag = &skb_shinfo(skb)->frags[0];
 		page = frag->page.p;
 		len = 0;
@@ -1123,9 +1125,9 @@ static int macvtap_do_read_zero_copy(struct macvtap_queue *q, int noblock)
 */
 		/* Nothing to read, let's sleep */
 		//printk(KERN_ERR "macvtap_do_read_zero_copy: before schedule \n");
-/*
 		schedule();
 		//printk(KERN_ERR "macvtap_do_read_zero_copy: after schedule \n");
+/*
 	}
 	//printk(KERN_ERR "macvtap_do_read_zero_copy: after skb_array_consume \n");
 	if (!noblock)

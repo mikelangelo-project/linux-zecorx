@@ -843,6 +843,7 @@ static void handle_rx_zcopy(struct vhost_net *net)
 	//printk(KERN_ERR "handle_rx_zcopy, before recvmsg MSG_ZCOPY_RX \n");
 	while(true) {
 		ret = sock->ops->recvmsg(sock, NULL, 1, MSG_ZCOPY_RX | MSG_DONTWAIT);
+		//ret = sock->ops->recvmsg(sock, NULL, 1, MSG_ZCOPY_RX);
 		//printk(KERN_ERR "handle_rx_zcopy, after recvmsg MSG_ZCOPY_RX, ret = %x \n", ret);
 		if (ret < 0) {
 			//printk(KERN_ERR "handle_rx_zcopy, ERROR after recvmsg MSG_ZCOPY_RX, ret = %d \n", ret);
@@ -864,14 +865,16 @@ static void handle_rx_zcopy(struct vhost_net *net)
 		vq->live_bufs--;
 		//printk(KERN_ERR "handle_rx_zcopy, len = %d, desc = %d, live_bufs = %d \n", len, desc, vq->live_bufs);
 		//printk(KERN_ERR "handle_rx_zcopy, after vhost_add_used_and_signal \n");
-		/* every so often, need to enable posting of additional buffers */
-		if (cnt == 32) {
+		/* every so often, need to enable posting of additional buffers and to re-kick the handle_rx thread */
+		/* values that work: 32, 16 */
+		if (!(cnt % 16)) {
 			//printk(KERN_ERR "handle_rx_zcopy, setting poll, poll = %p \n", &vq->poll);
 			//post_buffers(net);
 			vhost_poll_queue(&vq->poll);
 			//break;
 		}
 	}
+	vhost_poll_queue(&vq->poll);
 	
 	//printk(KERN_ERR "handle_rx_zcopy, before vhost_net_enable_vq \n");
 	vhost_net_enable_vq(net, vq);
