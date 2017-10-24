@@ -570,14 +570,15 @@ static const struct header_ops macvlan_hard_header_ops = {
 	.cache_update	= eth_header_cache_update,
 };
 
-static struct rtnl_link_ops macvlan_link_ops;
-
 static int macvlan_open(struct net_device *dev)
 {
 	struct macvlan_dev *vlan = netdev_priv(dev);
 	struct net_device *lowerdev = vlan->lowerdev;
 	int err;
 
+	printk(KERN_ERR "entering macvlan_open, dev = %p, lowerdev = %p \n", dev, lowerdev);
+	my_netdev_printk(dev);
+	my_netdev_printk(lowerdev);
 	if (vlan->port->passthru) {
 		if (!(vlan->flags & MACVLAN_FLAG_NOPROMISC)) {
 			err = dev_set_promiscuity(lowerdev, 1);
@@ -587,8 +588,7 @@ static int macvlan_open(struct net_device *dev)
 		goto hash_add;
 	}
 
-	if (lowerdev->features & NETIF_F_HW_L2FW_DOFFLOAD &&
-	    dev->rtnl_link_ops == &macvlan_link_ops) {
+	if (lowerdev->features & NETIF_F_HW_L2FW_DOFFLOAD) {
 		vlan->fwd_priv =
 		      lowerdev->netdev_ops->ndo_dfwd_add_station(lowerdev, dev);
 

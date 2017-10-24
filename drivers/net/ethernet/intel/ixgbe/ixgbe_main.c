@@ -2114,10 +2114,11 @@ static struct sk_buff *ixgbe_fetch_rx_buffer_zero_copy(struct ixgbe_ring *rx_rin
 	skb = rx_buffer->skb;
 	if (!skb) {
 		printk(KERN_ERR "ixgbe_fetch_rx_buffer_zero_copy, skb is NULL \n");
-		printk(KERN_ERR "entering ixgbe_fetch_rx_buffer_zero_copy, rx_ring = %p, next_to_clean = %d, next_to_use = %d, queue_index = %d \n", rx_ring, rx_ring->next_to_clean, rx_ring->next_to_use, rx_ring->queue_index);
+		printk(KERN_ERR "ixgbe_fetch_rx_buffer_zero_copy, rx_ring = %p, next_to_clean = %d, next_to_use = %d, queue_index = %d \n", rx_ring, rx_ring->next_to_clean, rx_ring->next_to_use, rx_ring->queue_index);
 		//rx_buffer_print(rx_buffer);
 		return NULL;
 	}
+	//printk(KERN_ERR "ixgbe_fetch_rx_buffer_zero_copy, rx_ring = %p, skb = %p, page = %p, next_to_clean = %d, next_to_use = %d, queue_index = %d \n", rx_ring, skb, rx_buffer->page, rx_ring->next_to_clean, rx_ring->next_to_use, rx_ring->queue_index);
 
 	// fix up the fields in the skb according to how much data was actually read
 	shinfo = skb_shinfo(skb);
@@ -2133,14 +2134,16 @@ static struct sk_buff *ixgbe_fetch_rx_buffer_zero_copy(struct ixgbe_ring *rx_rin
 
 	dma_unmap_page(rx_ring->dev, rx_buffer->dma, PAGE_SIZE, DMA_FROM_DEVICE);
 	// KM debug
+	/*
 	{
 	struct ubuf_info *ubuf;
 	unsigned long desc;
 	ubuf = skb_shinfo(skb)->destructor_arg;
 	desc = ubuf->desc;
-	//printk(KERN_ERR "ixgbe_fetch_rx_buffer_zero_copy, skb = %p, desc = %d \n", skb, desc);
-	//skb_print(skb);
+	printk(KERN_ERR "ixgbe_fetch_rx_buffer_zero_copy, skb = %p, desc = %d \n", skb, desc);
+	skb_print(skb);
 	}
+	*/
 
 	/* clear contents of buffer_info */
 	rx_buffer->page = NULL;
@@ -2158,11 +2161,12 @@ static struct sk_buff *ixgbe_fetch_rx_buffer(struct ixgbe_ring *rx_ring,
 	struct sk_buff *skb;
 	struct page *page;
 
-	//printk(KERN_ERR "entering ixgbe_fetch_rx_buffer_zero_copy, rx_ring = %p, next_to_clean = %d, next_to_use = %d, queue_index = %d \n", rx_ring, rx_ring->next_to_clean, rx_ring->next_to_use, rx_ring->queue_index);
+	//printk(KERN_ERR "entering ixgbe_fetch_rx_buffer, rx_ring = %p, next_to_clean = %d, next_to_use = %d, queue_index = %d \n", rx_ring, rx_ring->next_to_clean, rx_ring->next_to_use, rx_ring->queue_index);
 	if (rx_ring->zero_copy) {
 		skb = ixgbe_fetch_rx_buffer_zero_copy(rx_ring, rx_desc);
 		return skb;
 	}
+	//printk(KERN_ERR "ixgbe_fetch_rx_buffer, not zero copy \n");
 	//rx_ring_print(rx_ring, 0);
 	rx_buffer = &rx_ring->rx_buffer_info[rx_ring->next_to_clean];
 	//rx_buffer_print(rx_buffer);
@@ -2223,6 +2227,7 @@ dma_sync:
 
 	/* pull page into skb */
 	//printk(KERN_ERR "ixgbe_fetch_rx_buffer, before ixgbe_add_rx_frag, rx_ring = %p, rx_buffer = %p, rx_dexc = %p, skb = %p \n", rx_ring, rx_buffer, rx_desc, skb);
+	//skb_print(skb);
 	if (ixgbe_add_rx_frag(rx_ring, rx_buffer, rx_desc, skb)) {
 		/* hand second half of page back to the ring */
 		ixgbe_reuse_rx_page(rx_ring, rx_buffer);
@@ -2305,7 +2310,7 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 		if (!skb)
 			break;
 
-		//printk(KERN_ERR "ixgbe_clean_rx_irq, after ixgbe_fetch_rx_buffer \n");
+		//printk(KERN_ERR "ixgbe_clean_rx_irq, after ixgbe_fetch_rx_buffer, skb = %p \n", skb);
 		//skb_print_short(skb);
 		cleaned_count++;
 
@@ -4138,7 +4143,7 @@ static void ixgbe_configure_rx(struct ixgbe_adapter *adapter)
 	int i;
 	u32 rxctrl, rfctl;
 
-	//printk(KERN_ERR "entering ixgbe_configure_rx, adapter = %p \n", adapter);
+	printk(KERN_ERR "entering ixgbe_configure_rx, adapter = %p \n", adapter);
 
 	/* disable receives while setting up the descriptors */
 	hw->mac.ops.disable_rx(hw);
@@ -4163,10 +4168,10 @@ static void ixgbe_configure_rx(struct ixgbe_adapter *adapter)
 	 * Setup the HW Rx Head and Tail Descriptor Pointers and
 	 * the Base and Length of the Rx Descriptor Ring
 	 */
-	//printk(KERN_ERR "ixgbe_configure_rx, num_rx_queues = %d \n", adapter->num_rx_queues);
+	printk(KERN_ERR "ixgbe_configure_rx, num_rx_queues = %d \n", adapter->num_rx_queues);
 	for (i = 0; i < adapter->num_rx_queues; i++)
 	{
-		//printk(KERN_ERR "before ixgbe_configure_rx_ring, adapter = %p, ring = %p \n", adapter, adapter->rx_ring[i]);
+		printk(KERN_ERR "before ixgbe_configure_rx_ring, adapter = %p, i = %d, ring = %p \n", adapter, i, adapter->rx_ring[i]);
 		ixgbe_configure_rx_ring(adapter, adapter->rx_ring[i]);
 	}
 
@@ -4615,8 +4620,8 @@ int ixgbe_add_mac_filter(struct ixgbe_adapter *adapter,
 	struct ixgbe_hw *hw = &adapter->hw;
 	int i;
 
-	//printk(KERN_ERR "entering ixgbe_add_mac_filter, adapter = %p, pool = %d, num_rar_enties = %d \n", adapter, pool, hw->mac.num_rar_entries);
-	//addr_print(addr);
+	printk(KERN_ERR "entering ixgbe_add_mac_filter, adapter = %p, pool = %d, num_rar_enties = %d \n", adapter, pool, hw->mac.num_rar_entries);
+	addr_print(addr);
 	//print_mac_table(adapter);
 
 	if (is_zero_ether_addr(addr))
@@ -4636,8 +4641,8 @@ int ixgbe_add_mac_filter(struct ixgbe_adapter *adapter,
 
 		ixgbe_sync_mac_table(adapter);
 
-		//print_mac_table(adapter);
-		//printk(KERN_ERR "ixgbe_add_mac_filter 4, i = %d\n", i);
+		print_mac_table(adapter);
+		printk(KERN_ERR "ixgbe_add_mac_filter 4, i = %d\n", i);
 		return i;
 	}
 
@@ -5094,7 +5099,7 @@ static void ixgbe_macvlan_set_rx_mode(struct net_device *dev, unsigned int pool,
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 vmolr;
-	//printk(KERN_ERR "entering ixgbe_macvlan_set_rx_mode, adapter = %p, dev = %p, pool = %d \n", adapter, dev, pool);
+	printk(KERN_ERR "entering ixgbe_macvlan_set_rx_mode, adapter = %p, dev = %p, pool = %d \n", adapter, dev, pool);
 
 	/* No unicast promiscuous support for VMDQ devices. */
 	vmolr = IXGBE_READ_REG(hw, IXGBE_VMOLR(pool));
@@ -5239,7 +5244,8 @@ static int ixgbe_fwd_ring_up(struct net_device *vdev,
 	unsigned int rxbase, txbase, queues;
 	int i, baseq, err = 0;
 
-	//printk(KERN_ERR "entering ixgbe_fwd_ring_up, adapter = %p, vdev = %p \n", adapter, vdev);
+	printk(KERN_ERR "entering ixgbe_fwd_ring_up, adapter = %p, vdev = %p \n", adapter, vdev);
+	my_netdev_printk(vdev);
 	if (!test_bit(accel->pool, &adapter->fwd_bitmask))
 		return 0;
 
@@ -5252,12 +5258,17 @@ static int ixgbe_fwd_ring_up(struct net_device *vdev,
 	accel->netdev = vdev;
 	accel->rx_base_queue = rxbase = baseq;
 	accel->tx_base_queue = txbase = baseq;
+	printk(KERN_ERR "ixgbe_fwd_ring_up, rxbase = %d \n", rxbase);
+	printk(KERN_ERR "ixgbe_fwd_ring_up, num_rx_queues_per_pool = %d \n", adapter->num_rx_queues_per_pool);
 
 	for (i = 0; i < adapter->num_rx_queues_per_pool; i++)
 		ixgbe_disable_fwd_ring(accel, adapter->rx_ring[rxbase + i]);
 
 	for (i = 0; i < adapter->num_rx_queues_per_pool; i++) {
 		adapter->rx_ring[rxbase + i]->netdev = vdev;
+		printk(KERN_ERR "ixgbe_fwd_ring_up: rxbase = %d, i = %d, vdev = %p \n", rxbase, i, vdev);
+		printk(KERN_ERR "ixgbe_fwd_ring_up: rx_ring = %p \n", &adapter->rx_ring[rxbase + i]);
+		my_netdev_printk(vdev);
 		adapter->rx_ring[rxbase + i]->l2_accel_priv = accel;
 		ixgbe_configure_rx_ring(adapter, adapter->rx_ring[rxbase + i]);
 	}
@@ -5269,6 +5280,7 @@ static int ixgbe_fwd_ring_up(struct net_device *vdev,
 
 	queues = min_t(unsigned int,
 		       adapter->num_rx_queues_per_pool, vdev->num_tx_queues);
+	printk(KERN_ERR "ixgbe_fwd_ring_up, queues = %d \n", queues);
 	err = netif_set_real_num_tx_queues(vdev, queues);
 	if (err)
 		goto fwd_queue_err;
@@ -7927,7 +7939,7 @@ static void ixgbe_atr(struct ixgbe_ring *ring,
 	__be16 vlan_id;
 	int l4_proto;
 
-	printk(KERN_ERR "entering ixgbe_atr, ring = %p \n", ring);
+	//printk(KERN_ERR "entering ixgbe_atr, ring = %p \n", ring);
 	/* if ring doesn't have a interrupt vector, cannot perform ATR */
 	if (!q_vector)
 		return;
@@ -8257,8 +8269,8 @@ static int ixgbe_set_mac(struct net_device *netdev, void *p)
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct sockaddr *addr = p;
 
-	//printk(KERN_ERR "entering ixgbe_set_mac, netdev = %p \n", netdev);
-	//my_netdev_printk(netdev);
+	printk(KERN_ERR "entering ixgbe_set_mac, netdev = %p \n", netdev);
+	my_netdev_printk(netdev);
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EADDRNOTAVAIL;
 
@@ -9329,10 +9341,14 @@ static void *ixgbe_fwd_add(struct net_device *pdev, struct net_device *vdev)
 	unsigned int limit;
 	int pool, err;
 
+	printk(KERN_ERR "entering ixgbe_fwd_add, pdev = %p, vdev = %p \n", pdev, vdev);
+	my_netdev_printk(pdev);
+	my_netdev_printk(vdev);
 	/* Hardware has a limited number of available pools. Each VF, and the
 	 * PF require a pool. Check to ensure we don't attempt to use more
 	 * then the available number of pools.
 	 */
+	printk(KERN_ERR "ixgbe_fwd_add, num_rx_pools = %d, num_vfs = %d, used_pools = %d / %d \n", adapter->num_rx_pools, adapter->num_vfs, used_pools, IXGBE_MAX_VF_FUNCTIONS);
 	if (used_pools >= IXGBE_MAX_VF_FUNCTIONS)
 		return ERR_PTR(-EINVAL);
 
@@ -9362,6 +9378,7 @@ static void *ixgbe_fwd_add(struct net_device *pdev, struct net_device *vdev)
 		return ERR_PTR(-ENOMEM);
 
 	pool = find_first_zero_bit(&adapter->fwd_bitmask, 32);
+	printk(KERN_ERR "ixgbe_fwd_add, pool = %d \n", pool);
 	adapter->num_rx_pools++;
 	set_bit(pool, &adapter->fwd_bitmask);
 	limit = find_last_bit(&adapter->fwd_bitmask, 32);
@@ -9447,8 +9464,28 @@ ixgbe_features_check(struct sk_buff *skb, struct net_device *dev,
 	return features;
 }
 
-static inline int ixgbe_get_ring_index(struct net_device *dev) {
-	return 0;
+static inline int ixgbe_get_ring_index(struct ixgbe_adapter *adapter, struct net_device *vdev) {
+	/* match name of vdev with netdev of ring */
+	struct ixgbe_ring *rx_ring;
+	int n;
+	//printk(KERN_ERR "entering ixgbe_get_ring_index, adapter = %p, vdev = %p, num_rx_queues = %d \n", adapter, vdev, adapter->num_rx_queues);
+	//my_netdev_printk(vdev);
+	for (n = 0; n < adapter->num_rx_queues; n++) {
+		rx_ring = adapter->rx_ring[n];
+		//printk(KERN_ERR "ixgbe_get_ring_index, n = %d, rx_ring = %p, netdev = %p \n", n, rx_ring, rx_ring->netdev);
+		if (!rx_ring->netdev) {
+			continue;
+		}
+		//my_netdev_printk(rx_ring->netdev);
+		if (memcmp(vdev->dev_addr, rx_ring->netdev->dev_addr, 6) == 0) {
+			//my_netdev_printk(vdev);
+			//printk (KERN_ERR "ixgbe_get_ring_index, n = %d \n", n);
+			return n;
+		}
+	}
+	/* dev not found; fatal error */
+	//printk(KERN_ERR "exiting ixgbe_get_ring_index, dev not found \n");
+	return -ENXIO;
 }
 
 static inline bool ring_is_full(struct ixgbe_ring *rx_ring){
@@ -9477,12 +9514,14 @@ static int ixgbe_post_rx_buffer(struct net_device *dev, struct sk_buff *skb)
 	//my_netdev_printk(dev);
 	//my_netdev_printk(skb->dev);
 
-	ring_index = ixgbe_get_ring_index(skb->dev);
+	ring_index = ixgbe_get_ring_index(adapter, skb->dev);
+	if (ring_index < 0) {
+		return -ENXIO;
+	}
 	rx_ring = adapter->rx_ring[ring_index];
 	i = rx_ring->next_to_use;
 	rx_desc = IXGBE_RX_DESC(rx_ring, i);
 	bi = &rx_ring->rx_buffer_info[i];
-	//printk(KERN_ERR "ixgbe_post_rx_buffer, ring_index = %d, rx_ring = %p, next_to_clean = %d, next_to_use = %d, rx_desc = %p, bi = %p \n", ring_index, rx_ring, rx_ring->next_to_clean, rx_ring->next_to_use, rx_desc, bi);
 
 	// verify that we have space in the ring buffer to place the buffer
 	if (ring_is_full(rx_ring)) {
@@ -9490,6 +9529,7 @@ static int ixgbe_post_rx_buffer(struct net_device *dev, struct sk_buff *skb)
 		//printk(KERN_ERR "ixgbe_post_rx_buffer, no space \n");
 		return -EAGAIN;
 	}
+	//printk(KERN_ERR "ixgbe_post_rx_buffer, ring_index = %d, rx_ring = %p, next_to_clean = %d, next_to_use = %d, rx_desc = %p, bi = %p, skb = %p \n", ring_index, rx_ring, rx_ring->next_to_clean, rx_ring->next_to_use, rx_desc, bi, skb);
 	page = frag->page.p;
 	offset = frag->page_offset;
 	size = frag->size;
@@ -9526,23 +9566,28 @@ static int ixgbe_set_zero_copy_rx(struct net_device *dev, struct net_device *bas
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
 	struct ixgbe_ring *rx_ring;
 	int ring_index;
-	//printk(KERN_ERR "entering ixgbe_set_zero_copy_rx, dev = %p, base_dev = %p\n", dev, base_dev);
+	printk(KERN_ERR "entering ixgbe_set_zero_copy_rx, dev = %p, base_dev = %p\n", dev, base_dev);
 	if (!experimental_zcopyrx)
 		return -ENOTSUPP;
-	//my_netdev_printk(dev);
-	//my_netdev_printk(base_dev);
+	my_netdev_printk(dev);
+	my_netdev_printk(base_dev);
 	// assume we can map the device to a queue
 	// release existing buffers so that we can use our own
-	ring_index = ixgbe_get_ring_index(base_dev);
+	printk(KERN_ERR "ixgbe_set_zero_copy_rx, before ixgbe_get_ring_index \n");
+	ring_index = ixgbe_get_ring_index(adapter, base_dev);
+	printk(KERN_ERR "ixgbe_set_zero_copy_rx, after ixgbe_get_ring_index \n");
+	if (ring_index < 0) {
+		return -ENXIO;
+	}
 	rx_ring = adapter->rx_ring[ring_index];
-	//printk(KERN_ERR "ixgbe_set_zero_copy_rx, ring_index = %d, rx_ring = %p \n", ring_index, rx_ring);
-	//printk(KERN_ERR "ixgbe_set_zero_copy_rx, before ixgbe_disable_rx_queue \n");
+	printk(KERN_ERR "ixgbe_set_zero_copy_rx, ring_index = %d, rx_ring = %p \n", ring_index, rx_ring);
+	printk(KERN_ERR "ixgbe_set_zero_copy_rx, before ixgbe_disable_rx_queue \n");
 	ixgbe_disable_rx_queue(adapter, rx_ring);
 	usleep_range(10000, 20000);
-	//printk(KERN_ERR "ixgbe_set_zero_copy_rx, before ixgbe_clean_rx_ring \n");
+	printk(KERN_ERR "ixgbe_set_zero_copy_rx, before ixgbe_clean_rx_ring \n");
 	ixgbe_clean_rx_ring(rx_ring);
 	rx_ring->zero_copy = true;
-	//printk(KERN_ERR "ixgbe_set_zero_copy_rx, before ixgbe_configure_rx_ring \n");
+	printk(KERN_ERR "ixgbe_set_zero_copy_rx, before ixgbe_configure_rx_ring \n");
 	ixgbe_configure_rx_ring(adapter, rx_ring);
         return 0;
 }

@@ -61,25 +61,22 @@ void skb_print(struct sk_buff *skb)
 	int n_frags = shinfo->nr_frags;
 	struct page *p;
 	void *v;
+	int i;
+#define MAX_FRAGS_PRINT 2
 
 	printk(KERN_ERR "inside skb_print, skb = %p, sock = %p, queue_mapping = %d \n", skb, skb->sk, skb_get_queue_mapping(skb));
 	skb_print_short(skb);
 
 	buf_print(skb->data, (skb->len - skb->data_len));
 
-	if (n_frags > 0) {
-		printk(KERN_ERR "printing frag 0 \n");
-		frag = &shinfo->frags[0];
-		p = skb_frag_page(frag);
+	n_frags = min(n_frags, MAX_FRAGS_PRINT);
+	for (i = 0; i < n_frags; i++) {
+		printk(KERN_ERR "printing frag %d \n", i);
+		frag = &shinfo->frags[i];
+		p = page_address(skb_frag_page(frag));
+		buf_print(p, frag->page_offset);
 		v = skb_frag_address(frag);
-		buf_print(v, 50);
-	}
-	if (n_frags > 1) {
-		printk(KERN_ERR "printing frag 1 \n");
-		frag = &shinfo->frags[1];
-		p = skb_frag_page(frag);
-		v = skb_frag_address(frag);
-		buf_print(v, 50);
+		buf_print(v, frag->size);
 	}
 	printk(KERN_ERR "exiting skb_print \n");
 }
@@ -133,6 +130,7 @@ void my_netdev_printk(struct net_device *dev)
 	addr = dev->dev_addr;
 	printk(KERN_ERR "%s%s \n", netdev_name(dev), netdev_reg_state(dev));
 	addr_print(addr);
+	//printk(KERN_ERR "num_rx_queues = %d, real_num_rx_queues = %d, _rx = %p \n", dev->num_rx_queues, dev->real_num_rx_queues, dev->_rx);
 }
 EXPORT_SYMBOL(my_netdev_printk);
 
@@ -203,12 +201,17 @@ int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from)
 	iov = from->iov;
 	total_length = iov_length(iov, from->nr_segs);
 
+	//printk(KERN_ERR "entering map_iovec_to_skb, total_length = %d, iov = %p, count = %d\n", total_length, iov, iov_iter_count(from));
+	//skb_print(skb);
+
 	if (total_length < PAGE_SIZE)
 		return 0;
 								 
 	/* first segments may be incomplete, and may hold message headers */
 	for (seg = 0; seg < from->nr_segs; seg++) {
+		//printk(KERN_ERR "seg: %d, base = %p, len = %d \n", seg, iov[seg].iov_base, iov[seg].iov_len);
 		if (iov[seg].iov_len > PAGE_SIZE) {
+			//printk(KERN_ERR "xxx segment is larger than page \n");
 			len = PAGE_SIZE;
 		}
 		else {
@@ -221,21 +224,27 @@ int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from)
 		else {
 			offset =  ((unsigned long) iov[seg].iov_base) & ~PAGE_MASK;
 		}
+		//printk(KERN_ERR "len = %d, offset = %d \n", len, offset);
 
 		/* get page structure for each page */
 		// this also pins the page in memory
 		get_user_pages_fast(iov[seg].iov_base, 1, 1, &page_info);
 		/* map iovec segment to skb frag */
 		skb_fill_page_desc(skb, seg, page_info, offset, len);
+		//printk(KERN_ERR "len = %d, skb->len = %d, data_len = %d, truesize = %d dev = %p\n", len, skb->len, skb->data_len, skb->truesize, skb->dev);
 		skb->len += len;
 		skb->data_len += len;
+		//printk(KERN_ERR "len = %d, skb->len = %d, data_len = %d, truesize = %d dev = %p\n", len, skb->len, skb->data_len, skb->truesize, skb->dev);
 	}
 	// verify that other fields are correct: tail, end, len, etc
+	//printk(KERN_ERR "map_iovec_to_skb, near end \n");
+	//skb_print_short(skb);
+	//printk(KERN_ERR "exiting map_iovec_to_skb \n");
 	return frag_num;
 }
 EXPORT_SYMBOL(map_iovec_to_skb);
 
-void upmap_skb_frags(struct sk_buff *skb)
+void unmap_skb_frags(struct sk_buff *skb)
 {
 	struct skb_shared_info *shinfo = skb_shinfo(skb);
 	int n_frags = shinfo->nr_frags;
@@ -243,21 +252,27 @@ void upmap_skb_frags(struct sk_buff *skb)
 	int i;
 	int len;
 
+	//printk(KERN_ERR "inside unmap_skb_frags, skb = %p \n", skb);
 	if (!skb) return;
+	//printk(KERN_ERR "len = %d, data_len = %d, truesize = %d dev = %p\n", skb->len, skb->data_len, skb->truesize, skb->dev);
+	//printk(KERN_ERR "head = %p, data = %p, tail = %d, end = %d \n", skb->head, skb->data, skb->tail, skb->end);
 	/* print out shared info */
+	//printk(KERN_ERR "nr_frags = %d, \n", n_frags);
 	//skb_release_data(skb);
 	// perform callback
 	for (i=n_frags-1; i >=0; i--) {
 		frag = &skb_shinfo(skb)->frags[i];
 		// xxx think some more about this
 		len = min(frag->size, skb->data_len);
+		//printk(KERN_ERR "unmapping frag = %d, \n", i);
 		skb_frag_unref(skb, i);
 		skb->data_len -= len;
 		skb->len -= len;
 		shinfo->nr_frags--;
 	}
+	//printk(KERN_ERR "exiting unmap_skb_frags, skb = %p \n", skb);
 }
-EXPORT_SYMBOL(upmap_skb_frags);
+EXPORT_SYMBOL(unmap_skb_frags);
 
 static int meth_init(void)
 {

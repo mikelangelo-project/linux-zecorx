@@ -284,16 +284,17 @@ static void vhost_zerocopy_callback_zc(struct ubuf_info *ubuf, bool success)
 	struct vhost_virtqueue *vq = ubufs->vq;
 	int desc;
 	int len = 0;
-	printk(KERN_ERR "entering vhost_zerocopy_callback_zc, ubuf = %p, success = %d \n", ubuf, success);
-	if (!success)
-		return;
+	//printk(KERN_ERR "entering vhost_zerocopy_callback_zc, ubuf = %p, success = %d \n", ubuf, success);
+	//if (!success)
+		//return;
 	//desc = ubuf->desc >> 16;
 	desc = ubuf->desc;
 	//len = ubuf->desc & 0xffff;
 	/* xxx KM add back in the header size */
 	len += 12;
-	printk(KERN_ERR "vhost_zerocopy_callback_zc, desc = %d, len = %d \n", desc, len);
 	vhost_add_used_and_signal(vq->dev, vq, desc, len);
+	vq->live_bufs--;
+	printk(KERN_ERR "vhost_zerocopy_callback_zc, desc = %d, len = %d, success = %d, live_bufs = %d \n", desc, len, success, vq->live_bufs);
 	vhost_poll_queue(&vq->poll);
 }
 
@@ -796,11 +797,11 @@ static void post_buffers(struct vhost_net *net)
 	//if (vhost_enable_notify(&net->dev, vq) || num_bufs_posted) {
 	if (num_bufs_posted) {
 		/* need to schedule posting of additional available buffers */
+		//printk(KERN_ERR "post_buffers, vq = %p, num_bufs_posted = %d, live_bufs = %d \n", vq, num_bufs_posted, vq->live_bufs);
 		vhost_poll_queue(&vq->poll);
 	}
 
 	vhost_enable_notify(&net->dev, vq);
-	//printk(KERN_ERR "exiting post_buffers, vq = %p, %d \n", vq, num_bufs_posted);
 }
 
 /*
@@ -866,9 +867,9 @@ static void handle_rx_zcopy(struct vhost_net *net)
 		/* every so often, need to enable posting of additional buffers */
 		if (cnt == 32) {
 			//printk(KERN_ERR "handle_rx_zcopy, setting poll, poll = %p \n", &vq->poll);
-			post_buffers(net);
+			//post_buffers(net);
 			vhost_poll_queue(&vq->poll);
-			break;
+			//break;
 		}
 	}
 	
