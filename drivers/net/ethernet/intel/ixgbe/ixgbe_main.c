@@ -1504,11 +1504,13 @@ static inline void ixgbe_rx_checksum(struct ixgbe_ring *ring,
 	__le16 hdr_info = rx_desc->wb.lower.lo_dword.hs_rss.hdr_info;
 	bool encap_pkt = false;
 
+	//printk(KERN_ERR "entering ixgbe_rx_checksum ring = %p, skb = %p\n", ring, skb);
 	skb_checksum_none_assert(skb);
 
 	/* Rx csum disabled */
 	if (!(ring->netdev->features & NETIF_F_RXCSUM))
 		return;
+	//printk(KERN_ERR "ixgbe_rx_checksum after NETIF_F_RXCSUM \n");
 
 	if ((pkt_info & cpu_to_le16(IXGBE_RXDADV_PKTTYPE_VXLAN)) &&
 	    (hdr_info & cpu_to_le16(IXGBE_RXDADV_PKTTYPE_TUNNEL >> 16))) {
@@ -1539,6 +1541,7 @@ static inline void ixgbe_rx_checksum(struct ixgbe_ring *ring,
 		return;
 	}
 
+	//printk(KERN_ERR "ixgbe_rx_checksum ring CHECKSUM_UNNECESSARY \n");
 	/* It must be a TCP or UDP packet with a valid checksum */
 	skb->ip_summed = CHECKSUM_UNNECESSARY;
 	if (encap_pkt) {
@@ -1574,9 +1577,19 @@ static bool ixgbe_zero_copy_map_page(struct ixgbe_ring *rx_ring, struct ixgbe_rx
 
 	bi->dma = dma;
 	bi->page = page;
-	bi->page_offset = 0;
-	bi->skb = skb;
+	bi->page_offset = offset;
+	//bi->skb = skb;
 	//rx_buffer_print(bi);
+	{
+	skb->truesize -= skb->data_len;
+	skb->len -= skb->data_len;
+	skb_shinfo(skb)->nr_frags = 0;
+	skb->data_len = 0;
+	//skb->tail = skb->data = skb->head;
+	//kfree_skb(skb);
+	consume_skb(skb);
+	//bi->skb = NULL;
+	}
 
 	//printk(KERN_ERR "exiting ixgbe_zero_copy_map_page, rx_ring = %p, bi = %p, page = %p \n", rx_ring, bi, page);
 	return true;
@@ -1642,7 +1655,7 @@ void ixgbe_alloc_rx_buffers(struct ixgbe_ring *rx_ring, u16 cleaned_count)
 	// KM
 	if (rx_ring->zero_copy) {
 		// do something different
-		//printk(KERN_ERR "ixgbe_alloc_rx_buffers, zero_copy is set; no buffers allocated \n");
+		printk(KERN_ERR "ixgbe_alloc_rx_buffers, zero_copy is set; no buffers allocated \n");
 		return;
 	}
 	rx_desc = IXGBE_RX_DESC(rx_ring, i);
@@ -1821,7 +1834,7 @@ static bool ixgbe_is_non_eop(struct ixgbe_ring *rx_ring,
 	if (likely(ixgbe_test_staterr(rx_desc, IXGBE_RXD_STAT_EOP)))
 		return false;
 
-	printk("inside ixgbe_is_non_eop, skb is being re-assigned \n");
+	//printk(KERN_ERR "inside ixgbe_is_non_eop, skb is being re-assigned \n");
 	/* place skb in next buffer to be received */
 	rx_ring->rx_buffer_info[ntc].skb = skb;
 	rx_ring->rx_stats.non_eop_descs++;
@@ -1963,6 +1976,7 @@ static void ixgbe_reuse_rx_page(struct ixgbe_ring *rx_ring,
 	struct ixgbe_rx_buffer *new_buff;
 	u16 nta = rx_ring->next_to_alloc;
 
+	//printk(KERN_ERR "entering ixgbe_reuse_rx_page, rx_ring = %p, old_buff = %p \n", rx_ring, old_buff);
 	new_buff = &rx_ring->rx_buffer_info[nta];
 
 	/* update, and store next to alloc */
@@ -2015,12 +2029,6 @@ static bool ixgbe_add_rx_frag(struct ixgbe_ring *rx_ring,
 #endif
 
 	//printk(KERN_ERR "entering ixgbe_add_rx_frag, rx_ring = %p, rx_buffer = %p, rx_desc = %p, skb = %p, size = %d \n", rx_ring, rx_buffer, rx_desc, skb, size);
-	/*
-	{
-		unsigned char *p = page_address(page) + rx_buffer->page_offset;
-		buf_print(p, min(size, 20));
-	}
-	*/
 	/* is using zero-copy, do not copy data into skb */
 	if ((size <= IXGBE_RX_HDR_SIZE) && !skb_is_nonlinear(skb) && !rx_ring->zero_copy) {
 		unsigned char *va = page_address(page) + rx_buffer->page_offset;
@@ -2029,15 +2037,28 @@ static bool ixgbe_add_rx_frag(struct ixgbe_ring *rx_ring,
 		memcpy(__skb_put(skb, size), va, ALIGN(size, sizeof(long)));
 
 		/* page is not reserved, we can reuse buffer as-is */
-		if (likely(!ixgbe_page_is_reserved(page)))
+		if (likely(!ixgbe_page_is_reserved(page))) {
+			//printk(KERN_ERR "ixgbe_add_rx_frag, not ixgbe_page_is_reserved \n");
 			return true;
+		}
 
 		/* this page cannot be reused so discard it */
 		__free_pages(page, ixgbe_rx_pg_order(rx_ring));
 		return false;
 	}
+	if (rx_ring->zero_copy) {
+		truesize = PAGE_SIZE;
+	}
 
 	//printk(KERN_ERR "ixgbe_add_rx_frag, before skb_add_rx_frag \n");
+	/*
+	if (rx_ring->zero_copy && skb_is_nonlinear(skb)) {
+		printk(KERN_ERR "ixgbe_add_rx_frag: skb is linear, rx_ring = %p, size = %d, truesize = %d \n", rx_ring, size, truesize);
+	}
+	if (!page) {
+		printk(KERN_ERR "ixgbe_add_rx_frag: page is NULL \n");
+	}
+	*/
 	skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags, page,
 			rx_buffer->page_offset, size, truesize);
 
@@ -2045,7 +2066,7 @@ static bool ixgbe_add_rx_frag(struct ixgbe_ring *rx_ring,
 	if (unlikely(ixgbe_page_is_reserved(page)))
 		return false;
 
-	/* if xero-copy, then page cannot be reused */
+	/* if zero-copy, then page cannot be reused */
 	// KM
 	//printk(KERN_ERR "ixgbe_add_rx_frag, before is_zero_copy 2 \n");
 	if (rx_ring->zero_copy)
@@ -2071,6 +2092,7 @@ static bool ixgbe_add_rx_frag(struct ixgbe_ring *rx_ring,
 	 */
 	page_ref_inc(page);
 
+	//printk(KERN_ERR "ixgbe_add_rx_frag, end of function \n");
 	return true;
 }
 
@@ -2160,17 +2182,28 @@ static struct sk_buff *ixgbe_fetch_rx_buffer(struct ixgbe_ring *rx_ring,
 	struct ixgbe_rx_buffer *rx_buffer;
 	struct sk_buff *skb;
 	struct page *page;
+	int ntc, ntu;
 
 	//printk(KERN_ERR "entering ixgbe_fetch_rx_buffer, rx_ring = %p, next_to_clean = %d, next_to_use = %d, queue_index = %d \n", rx_ring, rx_ring->next_to_clean, rx_ring->next_to_use, rx_ring->queue_index);
+	/*
 	if (rx_ring->zero_copy) {
 		skb = ixgbe_fetch_rx_buffer_zero_copy(rx_ring, rx_desc);
 		return skb;
 	}
+	*/
 	//printk(KERN_ERR "ixgbe_fetch_rx_buffer, not zero copy \n");
 	//rx_ring_print(rx_ring, 0);
-	rx_buffer = &rx_ring->rx_buffer_info[rx_ring->next_to_clean];
+	ntc = rx_ring->next_to_clean;
+	ntu = rx_ring->next_to_use;
+	//rx_buffer = &rx_ring->rx_buffer_info[rx_ring->next_to_clean];
+	//rx_buffer = &rx_ring->rx_buffer_info[rx_ring->next_to_clean];
+	rx_buffer = &rx_ring->rx_buffer_info[ntc];
 	//rx_buffer_print(rx_buffer);
 	page = rx_buffer->page;
+	if (!page || (ntu == ntc)) {
+		//printk(KERN_ERR "ixgbe_fetch_rx_buffer: page is NULL; rx_ring = %p, rx_buffer = %p, next_to_clean = %d, next_to_use = %d, page = %p \n", rx_ring, rx_buffer, rx_ring->next_to_clean, rx_ring->next_to_use, page);
+		return NULL;
+	}
 	prefetchw(page);
 
 	skb = rx_buffer->skb;
@@ -2273,7 +2306,6 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 #endif /* IXGBE_FCOE */
 	u16 cleaned_count = ixgbe_desc_unused(rx_ring);
 
-	//printk(KERN_ERR "entering ixgbe_clean_rx_irq, rx_ring = %p, cleaned_count = %d, budget = %d \n", rx_ring, cleaned_count, budget);
 	while (likely(total_rx_packets < budget)) {
 		union ixgbe_adv_rx_desc *rx_desc;
 		struct sk_buff *skb;
@@ -2320,15 +2352,6 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 			continue;
 
 		//skb_print_short(skb);
-
-		/*
-		if (rx_ring->zero_copy) {
-			printk(KERN_ERR "ixgbe_clean_rx_irq, before kfree_skb \n");
-			kfree_skb(skb);
-			total_rx_packets++;
-			break;
-		}
-		*/
 
 		/* verify the packet layout is correct */
 		//printk(KERN_ERR "ixgbe_clean_rx_irq, before ixgbe_cleanup_headers \n");
@@ -2386,7 +2409,6 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 	q_vector->rx.total_packets += total_rx_packets;
 	q_vector->rx.total_bytes += total_rx_bytes;
 
-	//printk(KERN_ERR "exiting ixgbe_clean_rx_irq, total_rx_packets = %d \n", total_rx_packets);
 	return total_rx_packets;
 }
 
@@ -3088,6 +3110,7 @@ int ixgbe_poll(struct napi_struct *napi, int budget)
 	if (!test_bit(__IXGBE_DOWN, &adapter->state))
 		ixgbe_irq_enable_queues(adapter, BIT_ULL(q_vector->v_idx));
 
+	//printk(KERN_ERR "exiting ixgbe_poll, vector = %p, budget = %d, work_done = %d \n", q_vector, budget, work_done);
 	return min(work_done, budget - 1);
 }
 
@@ -5179,6 +5202,7 @@ static void ixgbe_clean_rx_ring(struct ixgbe_ring *rx_ring)
 		dma_unmap_page(dev, rx_buffer->dma,
 			       ixgbe_rx_pg_size(rx_ring), DMA_FROM_DEVICE);
 		// KM - xxx don't free the pages if they come from a zero_copy ring
+		/* xxx but need to return them for re-use !!!! */
 		if (!rx_ring->zero_copy)
 			__free_pages(rx_buffer->page, ixgbe_rx_pg_order(rx_ring));
 		rx_buffer->page = NULL;
@@ -6353,6 +6377,7 @@ static int ixgbe_change_mtu(struct net_device *netdev, int new_mtu)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	int max_frame = new_mtu + ETH_HLEN + ETH_FCS_LEN;
 
+	printk(KERN_ERR "entering ixgbe_change_mtu, old mtu = %d, new mtu = %d \n", netdev->mtu, new_mtu);
 	/* MTU < 68 is an error and causes problems on some kernels */
 	if ((new_mtu < 68) || (max_frame > IXGBE_MAX_JUMBO_FRAME_SIZE))
 		return -EINVAL;
@@ -9519,16 +9544,16 @@ static int ixgbe_post_rx_buffer(struct net_device *dev, struct sk_buff *skb)
 		return -ENXIO;
 	}
 	rx_ring = adapter->rx_ring[ring_index];
+	// verify that we have space in the ring buffer to place the buffer
+	if (ring_is_full(rx_ring)) {
+		// no more space
+		//printk(KERN_ERR "ixgbe_post_rx_buffer, no space, rx_ring = %p, next_to_clean = %d, next_to_use = %d, skb = %p \n", rx_ring, rx_ring->next_to_clean, rx_ring->next_to_use, skb);
+		return -EAGAIN;
+	}
 	i = rx_ring->next_to_use;
 	rx_desc = IXGBE_RX_DESC(rx_ring, i);
 	bi = &rx_ring->rx_buffer_info[i];
 
-	// verify that we have space in the ring buffer to place the buffer
-	if (ring_is_full(rx_ring)) {
-		// no more space
-		//printk(KERN_ERR "ixgbe_post_rx_buffer, no space \n");
-		return -EAGAIN;
-	}
 	//printk(KERN_ERR "ixgbe_post_rx_buffer, ring_index = %d, rx_ring = %p, next_to_clean = %d, next_to_use = %d, rx_desc = %p, bi = %p, skb = %p \n", ring_index, rx_ring, rx_ring->next_to_clean, rx_ring->next_to_use, rx_desc, bi, skb);
 	page = frag->page.p;
 	offset = frag->page_offset;
@@ -9546,12 +9571,15 @@ static int ixgbe_post_rx_buffer(struct net_device *dev, struct sk_buff *skb)
 	//printk(KERN_ERR "ixgbe_post_rx_buffer, i = %d \n", i);
 	// need to handle wrap of next_to_use
 	if (i == rx_ring->count)
-		rx_ring->next_to_use = 0;
-	else
-		rx_ring->next_to_use = i;
+		i = 0;
+
+	rx_ring->next_to_use = i;
 
 	/* clear the status bits for the next_to_use descriptor */
 	rx_desc->wb.upper.status_error = 0;
+
+	/* xxx KM who uses next_to_alloc? */
+	rx_ring->next_to_alloc = i;
 
 	// xxx push the h/w
 	// xxx KM - consider doing this only occasionally
@@ -9567,8 +9595,6 @@ static int ixgbe_set_zero_copy_rx(struct net_device *dev, struct net_device *bas
 	struct ixgbe_ring *rx_ring;
 	int ring_index;
 	printk(KERN_ERR "entering ixgbe_set_zero_copy_rx, dev = %p, base_dev = %p\n", dev, base_dev);
-	if (!experimental_zcopyrx)
-		return -ENOTSUPP;
 	my_netdev_printk(dev);
 	my_netdev_printk(base_dev);
 	// assume we can map the device to a queue

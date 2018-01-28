@@ -26,13 +26,6 @@
 
 #include <linux/meth_utils.h>
 
-struct virtio_desc_map {
-	struct hlist_node h_link;
-	long desc;
-	struct page *page;
-	struct ubuf_info *ubuf;
-};
-
 /*
  * A macvtap queue is the central object of this driver, it connects
  * an open character device to a macvlan interface. There can be
@@ -56,7 +49,6 @@ struct macvtap_queue {
 	struct list_head next;
 	struct skb_array skb_array;
 	// KM xxx
-	struct kmem_cache *virtio_desc_slab;
 	DECLARE_HASHTABLE(desc_hash_table, 10);
 };
 
@@ -366,6 +358,124 @@ static void macvtap_del_queues(struct net_device *dev)
 	vlan->numvtaps = MAX_MACVTAP_QUEUES;
 }
 
+
+/* head_skb must be freed by calling function */
+static int convert_skb_to_page_infos(struct macvtap_queue *q, struct sk_buff *head_skb, struct vhost_page_info **v_page_infos)
+{
+	struct sk_buff *curr_skb;
+	struct sk_buff *temp_skb;
+	int len;
+	skb_frag_t *frag;
+	struct page *page;
+	bool desc_found;
+	struct vhost_page_info *v_page_info;
+	int page_offset;
+	int nr_frags;
+	int i, j;
+	int diff;
+	void *p;
+
+	nr_frags = skb_shinfo(head_skb)->nr_frags;
+	//printk(KERN_ERR "convert_skb_to_page_infos: nr_frags = %d, frag_list = %p, next = %p, len = %d, data_len = %d \n", nr_frags, skb_shinfo(head_skb)->frag_list, head_skb->next, head_skb->len, head_skb->data_len);
+	curr_skb = head_skb;
+	j = 0;
+	i = 0;
+	while (true) {
+		if (i == nr_frags) {
+			/* finished frags on this skb; check if there is another skb attached */
+			temp_skb = curr_skb;
+			if (curr_skb != head_skb) {
+				head_skb->len -= temp_skb->len;
+				head_skb->data_len -= temp_skb->data_len;
+				head_skb->truesize -= temp_skb->truesize;
+			}
+			unmap_skb_frags(temp_skb);
+			if (curr_skb == head_skb) {
+				curr_skb = skb_shinfo(head_skb)->frag_list;
+				skb_shinfo(head_skb)->frag_list = NULL;
+				/* do not free the head_skb until we process all the data */
+			}
+			else {
+				curr_skb = curr_skb->next;
+				temp_skb->next = NULL;
+				consume_skb(temp_skb);
+			}
+			if (!curr_skb) {
+				break;
+			}
+			//printk(KERN_ERR "convert_skb_to_page_infos: nr_frags = %d, frag_list = %p, next = %p, len = %d, data_len = %d \n", nr_frags, skb_shinfo(curr_skb)->frag_list, curr_skb->next, curr_skb->len, curr_skb->data_len);
+			//skb_print_short(curr_skb);
+			nr_frags = skb_shinfo(curr_skb)->nr_frags;
+			//printk(KERN_ERR "convert_skb_to_page_infos: curr_skb = %p, nr_frags = %d \n", curr_skb, nr_frags);
+			i = 0;
+			if (!nr_frags) {
+				printk(KERN_ERR "convert_skb_to_page_infos: curr_skb = %p, nr_frags = %d \n", curr_skb, nr_frags);
+				break;
+			}
+		}
+		frag = &skb_shinfo(curr_skb)->frags[i];
+		page = frag->page.p;
+		page_offset = frag->page_offset;
+		/* find entry in hash table */
+		desc_found = false;
+		hash_for_each_possible(q->desc_hash_table, v_page_info, h_link, (unsigned long) page) {
+			if (!v_page_info) {
+				printk(KERN_ERR "convert_skb_to_page_infos: page not found, v_page_info = %p, page = %p \n", v_page_info, page);
+				break;
+			}
+			if (v_page_info->page == page) {
+				desc_found = true;
+				break;
+			}
+		}
+		if (desc_found) {
+			//printk(KERN_ERR "convert_skb_to_page_infos: page found, page = %p, v_page_info = %p \n", page, v_page_info);
+			hash_del(&v_page_info->h_link);
+		}
+		else {
+			/* What do we do???? */
+			printk(KERN_ERR "convert_skb_to_page_infos: page not found, page = %p \n", page);
+			/* xxx KM need to handle this somehow. data is now corrupted and we did not inform user */
+			/* we'll return a short packet, which will later be rejected */
+			i++;
+			continue;
+			//break;
+		}
+		//printk(KERN_ERR "convert_skb_to_page_infos: desc = %d, v_page_info = %p \n", v_page_info->desc, v_page_info);
+		len = frag->size;
+		if (!i && (curr_skb == head_skb)) {
+			/* if necessary, copy skb header into beginning of buffer */
+			diff = head_skb->len - head_skb->data_len;
+			//printk(KERN_ERR "convert_skb_to_page_infos: diff = %d, len = %d, data_len = %d \n", diff, curr_skb->len, curr_skb->data_len);
+			/* verify diff equals page-offset */
+			if (diff == page_offset) {
+				p = page_address(page) ;
+				memcpy(p, head_skb->data, diff);
+				len += diff;
+				page_offset = 0;
+			}
+			else {
+				//printk(KERN_ERR "convert_skb_to_page_infos: diff != offset, diff = %d, page_offset = %d, len = %d, data_len = %d \n", diff, page_offset, head_skb->len, head_skb->data_len);
+				//skb_print(head_skb);
+				p = page_address(page) + page_offset - diff;
+				memcpy(p, head_skb->data, diff);
+				len += diff;
+				page_offset -= diff;
+			}
+		}
+
+		//v_page_info->page = page;
+		v_page_info->offset = page_offset;
+		v_page_info->len = len;
+		v_page_infos[j] = v_page_info;
+		j++;
+		//printk(KERN_ERR "convert_skb_to_page_infos: curr_skb = %p, v_page_info = %p, page = %p, len = %d, desc = %d, i = %d, j = %d, offset = %d \n", curr_skb, v_page_info, page, len, v_page_info->desc, i, j, page_offset);
+		i++;
+	}
+	//printk(KERN_ERR "convert_skb_to_page_infos: n_buffers = %d \n", j);
+	return j;
+}
+
 static rx_handler_result_t macvtap_handle_frame(struct sk_buff **pskb)
 {
 	struct sk_buff *skb = *pskb;
@@ -375,6 +485,7 @@ static rx_handler_result_t macvtap_handle_frame(struct sk_buff **pskb)
 	netdev_features_t features = TAP_FEATURES;
 
 	//printk(KERN_ERR "entering macvtap_handle_frame, skb = %p \n", skb);
+	//skb_print(skb);
 	vlan = macvtap_get_vlan_rcu(dev);
 	if (!vlan) {
 		//printk(KERN_ERR "macvtap_handle_frame, no vlan, skb = %p \n", skb);
@@ -382,9 +493,10 @@ static rx_handler_result_t macvtap_handle_frame(struct sk_buff **pskb)
 	}
 
 	q = macvtap_get_queue(dev, skb);
-	//printk(KERN_ERR "macvtap_handle_frame, q = %p \n", q);
+	//printk(KERN_ERR "macvtap_handle_frame, q = %p, skb = %p \n", q, skb);
 	if (!q)
 		return RX_HANDLER_PASS;
+
 
 	if (__skb_array_full(&q->skb_array)) {
 		printk(KERN_ERR "macvtap_handle_frame, skb array is full; need to drop packet \n");
@@ -435,50 +547,45 @@ static rx_handler_result_t macvtap_handle_frame(struct sk_buff **pskb)
 		    !(features & NETIF_F_CSUM_MASK) &&
 		    skb_checksum_help(skb))
 			goto drop;
-	//printk(KERN_ERR "macvtap_handle_frame, before skb_array_produce \n");
+		//printk(KERN_ERR "macvtap_handle_frame, before skb_array_produce \n");
 		if (skb_array_produce(&q->skb_array, skb))
 			goto drop;
-	//printk(KERN_ERR "macvtap_handle_frame, after skb_array_produce \n");
+		//printk(KERN_ERR "macvtap_handle_frame, after skb_array_produce \n");
 	}
 
 wake_up:
+	//printk(KERN_ERR "macvtap_handle_frame, before wakeup, returning RX_HANDLER_CONSUMED; sk = %p, skb = %p, frags = %d, current = %p \n", &q->sk, skb, skb_shinfo(skb)->nr_frags, current);
+	//wait_queue_print(&rcu_dereference_raw(q->sk.sk_wq)->wait);
+	//wait_queue_print(&q->sk.sk_wq->wait);
 	wake_up_interruptible_poll(sk_sleep(&q->sk), POLLIN | POLLRDNORM | POLLRDBAND);
-	//printk(KERN_ERR "macvtap_handle_frame, after wakeup, returning RX_HANDLER_CONSUMED \n");
+	//printk(KERN_ERR "macvtap_handle_frame, after wakeup, current = %p \n", current);
+	//wait_queue_print(&rcu_dereference_raw(q->sk.sk_wq)->wait);
 	return RX_HANDLER_CONSUMED;
 
 drop:
 	/* Count errors/drops only here, thus don't care about args. */
 	//printk(KERN_ERR "macvtap_handle_frame, drop skb = %p \n", skb);
-	/* return buffer for re-use */
 	if (sock_flag(&q->sk, SOCK_ZEROCOPY_RX)) {
-		unsigned long desc = 0xdeadbeef;
-		int len;
-		skb_frag_t *frag;
-		struct page *page;
-		struct virtio_desc_map *hlist_entry;
-		bool desc_found = false;
-		frag = &skb_shinfo(skb)->frags[0];
-		page = frag->page.p;
-		len = 0;
-		/* find entry in hash table */
-		hash_for_each_possible(q->desc_hash_table, hlist_entry, h_link, (unsigned long) page) {
-			if (hlist_entry->page == page) {
-				desc_found = true;
-				desc = hlist_entry->desc;
-				break;
-			}
-		}
-		unmap_skb_frags(skb);
-		if (desc_found) {
-			hash_del(&hlist_entry->h_link);
+		/* return buffers for re-use */
+#define MAX_PAGE_BUFFERS 64
+		struct vhost_page_info *v_page_infos[MAX_PAGE_BUFFERS];
+		struct vhost_page_info *v_page_info;
+		int n_buffers;
+		int i;
+
+		//skb_print_short(skb);
+		n_buffers =  convert_skb_to_page_infos(q, skb, v_page_infos);
+		//printk(KERN_ERR "macvtap_handle_frame, n_buffers = %d \n", n_buffers);
+		//skb_print_short(skb);
+		for (i = 0; i < n_buffers; i++) {
+			v_page_info = v_page_infos[i];
+			printk(KERN_ERR "macvtap_handle_frame, buffer dropped, desc = %d, page = %p, skb = %p \n", v_page_info->desc, v_page_info->page, skb);
 			/* need to perform callback to vhost to free up buffer */
-			hlist_entry->ubuf->callback(hlist_entry->ubuf, false);
-			kmem_cache_free(q->virtio_desc_slab, hlist_entry);
-			printk(KERN_ERR "macvtap_handle_frame, buffer dropped, desc = %d, page = %p, skb = %p \n", desc, page, skb);
+			v_page_info->len = 0;
+			v_page_info->offset = 0;
+			v_page_info->callback(v_page_info);
 		}
-		else {
-			printk(KERN_ERR "macvtap_handle_frame, buffer not found in hashtable; page = %p \n", page);
-		}
+		//wake_up_interruptible_poll(sk_sleep(&q->sk), POLLIN | POLLRDNORM | POLLRDBAND);
 	}
 	macvlan_count_rx(vlan, 0, 0, 0);
 	kfree_skb(skb);
@@ -565,6 +672,7 @@ static void macvtap_setup(struct net_device *dev)
 {
 	macvlan_common_setup(dev);
 	dev->tx_queue_len = TUN_READQ_SIZE;
+	//dev->tx_queue_len = 800;
 }
 
 static struct rtnl_link_ops macvtap_link_ops __read_mostly = {
@@ -603,6 +711,7 @@ static int macvtap_open(struct inode *inode, struct file *file)
 	int err = -ENODEV;
 
 	printk(KERN_ERR "entering macvtap_open \n");
+	printk(KERN_ERR "macvtap_open: inode = %p, file = %p \n", inode, file);
 	rtnl_lock();
 	dev = dev_get_by_macvtap_minor(iminor(inode));
 	my_netdev_printk(dev);
@@ -622,6 +731,7 @@ static int macvtap_open(struct inode *inode, struct file *file)
 	q->sock.file = file;
 	q->sock.ops = &macvtap_socket_ops;
 	sock_init_data(&q->sock, &q->sk);
+	printk(KERN_ERR "macvtap_open: socket = %p, sk = %p \n", &q->sock, &q->sk);
 	q->sk.sk_write_space = macvtap_sock_write_space;
 	q->sk.sk_destruct = macvtap_sock_destruct;
 	q->flags = IFF_VNET_HDR | IFF_NO_PI | IFF_TAP;
@@ -640,7 +750,7 @@ static int macvtap_open(struct inode *inode, struct file *file)
 		//printk(KERN_ERR "macvtap_open inside SOCK_ZEROCOPY \n");
 		sock_set_flag(&q->sk, SOCK_ZEROCOPY);
 	}
-	//printk(KERN_ERR "sock flags = %x \n", q->sk.sk_flags);
+	printk(KERN_ERR "sk = %p, sock flags = %lx \n", &q->sk, q->sk.sk_flags);
 
 	err = -ENOMEM;
 	if (skb_array_init(&q->skb_array, dev->tx_queue_len, GFP_KERNEL))
@@ -652,7 +762,6 @@ static int macvtap_open(struct inode *inode, struct file *file)
 
 	dev_put(dev);
 	my_netdev_printk(dev);
-	q->virtio_desc_slab = NULL;
 	if (dev->netdev_ops->ndo_set_zero_copy_rx) {
 		int rc;
 		rc = dev->netdev_ops->ndo_set_zero_copy_rx(dev, dev);
@@ -660,21 +769,14 @@ static int macvtap_open(struct inode *inode, struct file *file)
 		if (!rc) {
 			printk(KERN_ERR "macvtap_open inside SOCK_ZEROCOPY_RX \n");
 			sock_set_flag(&q->sk, SOCK_ZEROCOPY_RX);
-			printk(KERN_ERR "sock flags = %x \n", q->sk.sk_flags);
-			/* allocate slab to track mappings of buffers to virtio descriptors */
-			q->virtio_desc_slab = kmem_cache_create("macvtap_virtio_slab", sizeof(struct virtio_desc_map), 0, 0, NULL);
-			printk(KERN_ERR "virtio_desc_slab = %p \n", q->virtio_desc_slab);
-			if (!q->virtio_desc_slab) {
-				err = -ENOMEM;
-				goto err_queue;
-			}
+			printk(KERN_ERR "sock flags = %lx \n", q->sk.sk_flags);
 			/* initialize hash table to map buffers to virtio descriptors */
 			hash_init(q->desc_hash_table);
 		}
 	}
 
 	rtnl_unlock();
-	//printk(KERN_ERR "exiting macvtap_open \n");
+	printk(KERN_ERR "exiting macvtap_open \n");
 	return err;
 
 err_queue:
@@ -691,12 +793,20 @@ err:
 
 static int macvtap_release(struct inode *inode, struct file *file)
 {
-	int rc;
 	struct macvtap_queue *q = file->private_data;
-	if (q->virtio_desc_slab) {
-		kmem_cache_destroy(q->virtio_desc_slab);
+	struct vhost_page_info *v_page_info;
+	int bkt;
+
+	printk(KERN_ERR "entering macvtap_release \n");
+	/* unpin user pages that were allocated for this device */
+	/* do we have to actually remove them from the hashtable? */
+	hash_for_each(q->desc_hash_table, bkt, v_page_info, h_link) {
+		put_page(v_page_info->page);
+		/* need to return the v_page_info structure to the vhost vhost_desc_slab via callback */
 	}
+
 	macvtap_put_queue(q);
+	printk(KERN_ERR "exiting macvtap_release \n");
 	return 0;
 }
 
@@ -982,53 +1092,15 @@ done:
 	return ret ? ret : total;
 }
 
-/*
-* In general we should not enter this function, and we should be cleaned up before being called.
-* If called, it means that the regular loop to process the completed skb is no longer running.
-*/
-static void macvtap_rx_buffer_callback(struct sk_buff *skb)
-{
-	int len;
-	int desc;
-	struct ubuf_info *ubuf;
-	printk(KERN_ERR "entering macvtap_rx_buffer_callback: skb = %p \n", skb);
-	skb_print(skb);
-	return;
-	if (skb->data_len) {
-		// KM xxx need to unmap the page somehwere
-		// data will be processed later in macvtap_do_read_zero_copy - no!!!! 
-		//return;
-	}
-	/* take note of len to pass to upper level */
-	//len = skb->len;
-	ubuf = skb_shinfo(skb)->destructor_arg;
-	if (!ubuf)
-		printk(KERN_ERR "macvtap_rx_buffer_callback: ubuf is NULL \n");
-	else {
-		desc = ubuf->desc;
-		printk(KERN_ERR "macvtap_rx_buffer_callback: skb = %p, len = %d, desc = %d, callback = %p \n", skb, skb->len, desc, ubuf->callback);
-		//ubuf->desc = (desc << 16) + len;
-		if (ubuf->callback)
-			ubuf->callback(ubuf, false);
-	}
-	// unmap the page and fix up pointers in skb
-	unmap_skb_frags(skb);
-	//skb_print(skb);
-	return;
-}
-
 static int macvtap_post_rx_buffer(struct macvtap_queue *q, struct msghdr *m)
 {
 	struct macvlan_dev *vlan;
 	struct net_device *dev;
-	int num_frags = 0;
+	//int num_frags = 0;
 	int ret = -ENOTSUPP;
 	struct sk_buff *skb = NULL;
-	struct iov_iter *to = &m->msg_iter;
-	struct ubuf_info *ubuf;
-	unsigned long desc;
-	struct virtio_desc_map *desc_map;
-	skb_frag_t *frag;
+	struct vhost_page_info *v_page_info;
+	//skb_frag_t *frag;
 	struct page *page;
 
 	//printk(KERN_ERR "entering macvtap_post_rx_buffer: q = %p, m = %p, to = %p\n", q, m, to);
@@ -1037,30 +1109,24 @@ static int macvtap_post_rx_buffer(struct macvtap_queue *q, struct msghdr *m)
 		dev = vlan->dev;
 		//my_netdev_printk(dev);
 		if (dev->netdev_ops && dev->netdev_ops->ndo_post_rx_buffer) {
-			desc_map = kmem_cache_alloc(q->virtio_desc_slab, GFP_KERNEL);
-			skb = alloc_skb(64, q->sk.sk_allocation);
+			v_page_info = m->msg_control;
+			skb = alloc_skb(128, q->sk.sk_allocation);
 			if (!skb) {
 				ret = -ENOMEM;
 				goto err1;
 			}
 			ret = 0;
 
+			/* pin the page */
+			get_user_pages_fast(v_page_info->virt_page_addr, 1, 1, &page);
+			/* attach the page to the skb */
+			skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags, page, 0, v_page_info->virt_page_len, v_page_info->virt_page_len);
+			v_page_info->page = page;
 			//printk(KERN_ERR "macvtap_post_rx_buffer: before map_iovec_to_skb\n");
 			//iov_iter_print(to);
-			num_frags = map_iovec_to_skb(skb, to);
 			//skb->sk = &q->sk;
 			skb->dev = dev;
-			//skb->destructor = macvtap_rx_buffer_callback;
-			//skb_shinfo(skb)->destructor_arg = m->msg_control;
-			//printk(KERN_ERR "macvtap_post_rx_buffer: skb = %p, destructor_arg = %p \n", skb, skb_shinfo(skb)->destructor_arg);
 			// KM xxx kludge - does this stuff belong at the vhost level rather than macvtap?
-			ubuf = m->msg_control;
-			desc = ubuf->desc;
-			desc_map->desc = desc;
-			frag = &skb_shinfo(skb)->frags[0];
-			page = frag->page.p;
-			desc_map->page = page;
-			desc_map->ubuf = ubuf;
 			//skb_shinfo(skb)->tx_flags |= SKBTX_DEV_ZEROCOPY;
 			//skb_shinfo(skb)->tx_flags |= SKBTX_SHARED_FRAG;
 			/* dev MAC address is now avaialbe to lower level device driver */
@@ -1072,11 +1138,9 @@ static int macvtap_post_rx_buffer(struct macvtap_queue *q, struct msghdr *m)
 				/* free up the skb; etc */
 				unmap_skb_frags(skb);
 				kfree_skb(skb);
-				kmem_cache_free(q->virtio_desc_slab, desc_map);
 				return ret;
 			}	
-			//printk(KERN_ERR "macvtap_post_rx_buffer: skb = %p, desc = %d, page = %p, desc_map = %p \n", skb, desc, page, desc_map);
-			hash_add(q->desc_hash_table, &desc_map->h_link, (unsigned long) page);
+			hash_add(q->desc_hash_table, &v_page_info->h_link, (unsigned long) page);
 		}
 	}
 err1:
@@ -1084,122 +1148,71 @@ err1:
 	return ret;
 }
 
-
-static int macvtap_do_read_zero_copy(struct macvtap_queue *q, int noblock)
+static int macvtap_do_read_zero_copy(struct macvtap_queue *q, struct msghdr *m, int noblock)
 {
-	//DEFINE_WAIT(wait);
-	struct sk_buff *skb;
-	ssize_t ret = -EAGAIN;
-	//struct ubuf_info *ubuf;
-	unsigned long desc = 0xdeadbeef;
+	struct sk_buff *head_skb;
 	int len;
 	skb_frag_t *frag;
 	struct page *page;
-	struct virtio_desc_map *hlist_entry;
-	bool desc_found = false;
+	struct vhost_page_info *v_page_info;
+	struct vhost_page_info **v_page_infos;
+	int nr_frags;
+	void *p;
+	int ret;
 
 	//printk(KERN_ERR "entering macvtap_do_read_zero_copy: q = %p, noblock = %d \n", q, noblock);
 
-/*
-	while (1) {
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: before prepare_to_wait \n");
-		if (!noblock)
-			prepare_to_wait(sk_sleep(&q->sk), &wait, TASK_INTERRUPTIBLE);
-*/
+	//printk(KERN_ERR "macvtap_do_read_zero_copy: before skb_array_consume \n");
 
-		/* Read frames from the queue */
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: before skb_array_consume \n");
-		skb = skb_array_consume(&q->skb_array);
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: after skb_array_consume, skb = %p \n", skb);
-/*
-		if (skb)
-			break;
-		if (noblock) {
-			ret = -EAGAIN;
-			break;
-		}
-		if (signal_pending(current)) {
-			ret = -ERESTARTSYS;
-			break;
-		}
-*/
-		/* Nothing to read, let's sleep */
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: before schedule \n");
-		schedule();
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: after schedule \n");
-/*
-	}
-	//printk(KERN_ERR "macvtap_do_read_zero_copy: after skb_array_consume \n");
-	if (!noblock)
-		finish_wait(sk_sleep(&q->sk), &wait);
-*/
+	/* Read frames from the queue */
+	head_skb = skb_array_consume(&q->skb_array);
+	//printk(KERN_ERR "macvtap_do_read_zero_copy: after skb_array_consume, q = %p, skb = %p \n", q, head_skb);
+	//skb_print(head_skb);
+	if (!head_skb)
+		return 0;
 
-	if (skb) {
-		/* extract ring entry info from skb */
-		//ubuf = skb_shinfo(skb)->destructor_arg;
-		//skb_shinfo(skb)->destructor_arg = NULL;
-		//skb->destructor = NULL;
-		//desc = ubuf->desc;
-		frag = &skb_shinfo(skb)->frags[0];
-		page = frag->page.p;
-		/* find entry in hash table */
-		hash_for_each_possible(q->desc_hash_table, hlist_entry, h_link, (unsigned long) page) {
-			if (hlist_entry->page == page) {
-				desc_found = true;
-				desc = hlist_entry->desc;
-				break;
-			}
+	//t = rdtsc();
+	v_page_infos = m->msg_control;
+	//printk(KERN_ERR "macvtap_do_read_zero_copy: skb->ip_summed = %d, skb->csum = %x \n", skb->ip_summed, skb->csum);
+	//printk(KERN_ERR "macvtap_do_read_zero_copy: after skb_array_consume, skb = %p \n", head_skb);
+	/* verify that we have an attached page */
+	nr_frags = skb_shinfo(head_skb)->nr_frags;
+	//skb_print_short(head_skb);
+	/*
+	if (nr_frags > 1) {
+		printk(KERN_ERR "macvtap_do_read_zero_copy: ip_summed = %d, csum = %x \n", skb->ip_summed, skb->csum);
+		skb_print(head_skb);
+	}
+	*/
+	if (!nr_frags) {
+		printk(KERN_ERR "macvtap_do_read_zero_copy: no frags !!!! \n");
+		/* copy skb header to an available buffer and pass it to vhost */
+		v_page_info = v_page_infos[0];
+		if (!v_page_info) {
+			printk(KERN_ERR "macvtap_do_read_zero_copy: no page available !!!! \n");
+			consume_skb(head_skb);
+			return 0;
 		}
-		if (desc_found) {
-			hash_del(&hlist_entry->h_link);
-			//printk (KERN_ERR "macvtap_do_read_zero_copy: desc found: desc = %d, page = %p, entry = %p \n", desc, page, hlist_entry);
-			/*
-			if (desc != hlist_entry->desc) {
-				printk (KERN_ERR "XXX xxx descriptors do not match, desc = %d, hlist_entry->desc = %s \n", desc, hlist_entry->desc);
-			}
-			*/
-			kmem_cache_free(q->virtio_desc_slab, hlist_entry);
-		}
-		else {
-			/* What do we do???? */
-			printk(KERN_ERR "macvtap_do_read_zero_copy: page not found, desc = %d, page = %p \n", desc, page);
-		}
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: skb = %p, ubuf = %p, desc = %d \n", skb, ubuf, desc);
-		//skb_print(skb);
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: desc = %d \n", desc);
-		len = skb->len;
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: len = %d \n", len);
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: skb = %p, page = %p, len = %d, desc = %d \n", skb, page, len, desc);
-		// xxx fix up counters in ring buffer
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: before unmap_skb_frags \n");
-		unmap_skb_frags(skb);
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: after unmap_skb_frags \n");
-		//skb_print(skb);
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: before kfree_skb \n");
-		/*
-		{
-			struct skb_shared_info *shinfo = skb_shinfo(skb);
-			skb_frag_t *frag;
-			struct page *p;
-			void *v;
 
-			frag = &skb_shinfo(skb)->frags[0];
-			p = skb_frag_page(frag);
-			v = page_address(p);
-			//buf_print(v, len);
-		}
-		*/
-		consume_skb(skb);
-		//kfree_skb(skb);
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: after kfree_skb \n");
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: len = %d \n", len);
-		ret = (desc << 16) + len;
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: ret = %x \n", ret);
+		/* map the page */
+		get_user_pages_fast(v_page_info->virt_page_addr, 1, 1, &page);
+		v_page_info->page = page;
+		p = page_address(page);
+		memcpy(p, head_skb->data, head_skb->len);
+		v_page_info->len = head_skb->len;
+		/* unmap the page */
+		put_page(page);
+		//kfree_skb(head_skb);
+		consume_skb(head_skb);
+		return 1;
 	}
-	else {
-		//printk(KERN_ERR "macvtap_do_read_zero_copy: NO SKB \n");
-	}
-	//printk(KERN_ERR "exiting macvtap_do_read_zero_copy \n");
+	//printk(KERN_ERR "macvtap_do_read_zero_copy: v_page_infos = %p \n", v_page_infos);
+	//printk(KERN_ERR "macvtap_do_read_zero_copy: nr_frags = %d, frag_list = %p, next = %p, len = %d, data_len = %d \n", nr_frags, skb_shinfo(head_skb)->frag_list, head_skb->next, head_skb->len, head_skb->data_len);
+	v_page_infos[0] = NULL;
+	ret = convert_skb_to_page_infos(q, head_skb, &v_page_infos[1]);
+	consume_skb(head_skb);
+
+	//printk(KERN_ERR "macvtap_do_read_zero_copy: ret = %d, skb = %p \n", ret, head_skb);
 	return ret;
 }
 
@@ -1549,7 +1562,7 @@ static int macvtap_recvmsg(struct socket *sock, struct msghdr *m,
 	}
 	else if (flags & MSG_ZCOPY_RX) {
 		//printk(KERN_ERR "macvtap_recvmsg, MSG_ZCOPY_RX \n");
-		ret = macvtap_do_read_zero_copy(q, flags & MSG_DONTWAIT);
+		ret = macvtap_do_read_zero_copy(q, m, flags & MSG_DONTWAIT);
 		return ret;
 	}
 	//printk(KERN_ERR "macvtap_recvmsg, not MSG_ZCOPY_RX_POST \n");
@@ -1680,6 +1693,7 @@ static int macvtap_init(void)
 {
 	int err;
 
+	printk(KERN_ERR "entering macvtap_init \n");
 	err = alloc_chrdev_region(&macvtap_major, 0,
 				MACVTAP_NUM_DEVS, "macvtap");
 	if (err)
@@ -1702,6 +1716,7 @@ static int macvtap_init(void)
 	if (err)
 		goto out5;
 
+	printk(KERN_ERR "exiting macvtap_init \n");
 	return 0;
 
 out5:
@@ -1719,12 +1734,14 @@ module_init(macvtap_init);
 
 static void macvtap_exit(void)
 {
+	printk(KERN_ERR "entering macvtap_exit \n");
 	rtnl_link_unregister(&macvtap_link_ops);
 	unregister_netdevice_notifier(&macvtap_notifier_block);
 	class_unregister(&macvtap_class);
 	cdev_del(&macvtap_cdev);
 	unregister_chrdev_region(macvtap_major, MACVTAP_NUM_DEVS);
 	idr_destroy(&minor_idr);
+	printk(KERN_ERR "exiting macvtap_exit \n");
 }
 module_exit(macvtap_exit);
 

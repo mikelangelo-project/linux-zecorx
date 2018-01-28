@@ -37,7 +37,7 @@ void skb_print_short(struct sk_buff *skb)
 	int n_frags = shinfo->nr_frags;
 	struct page *p;
 	void *v;
-	printk(KERN_ERR "inside skb_print_short, skb = %p, sock = %p, queue_mapping = %d, users = %d \n", skb, skb->sk, skb_get_queue_mapping(skb), skb->users);
+	printk(KERN_ERR "inside skb_print_short, skb = %p, sock = %p, queue_mapping = %d \n", skb, skb->sk, skb_get_queue_mapping(skb));
 	if (!skb) return;
 	printk(KERN_ERR "len = %d, data_len = %d, truesize = %d dev = %p\n", skb->len, skb->data_len, skb->truesize, skb->dev);
 	printk(KERN_ERR "head = %p, data = %p, tail = %d, end = %d \n", skb->head, skb->data, skb->tail, skb->end);
@@ -47,7 +47,7 @@ void skb_print_short(struct sk_buff *skb)
 		frag = &shinfo->frags[i];
 		p = skb_frag_page(frag);
 		v = skb_frag_address(frag);
-		printk(KERN_ERR "frag_num = %d, page = %p, offset = %d, size = %d, page address = %p \n", i, p, frag->page_offset, frag->size, v);
+		printk(KERN_ERR "frag_num = %d, page = %p, offset = %d, size = %d, frag address = %p \n", i, p, frag->page_offset, frag->size, v);
 	}
 	printk(KERN_ERR "exiting skb_print_short, skb = %p \n", skb);
 }
@@ -120,8 +120,6 @@ EXPORT_SYMBOL(addr_print);
 void my_netdev_printk(struct net_device *dev)
 {
 	unsigned char *addr;
-	int i;
-	struct netdev_rx_queue *q;
 
 	if (!dev) {
 		printk(KERN_ERR "NULL net_device \n");
@@ -137,11 +135,11 @@ EXPORT_SYMBOL(my_netdev_printk);
 void iovec_print(struct iovec *iov, int n_segs, int total_count)
 {
 	int seg;
-	int sum = 0;
-	int len;
+	size_t sum = 0;
+	size_t len;
 	for (seg = 0; seg < 3 && seg < n_segs && sum < total_count; seg++)
 	{
-		printk(KERN_ERR "seg: %d, base = %p, len = %d \n", seg, iov[seg].iov_base, iov[seg].iov_len);
+		printk(KERN_ERR "seg: %d, base = %p, len = %ld \n", seg, iov[seg].iov_base, iov[seg].iov_len);
 		len = min(iov[seg].iov_len, total_count - sum);
 		buf_print(iov[seg].iov_base, len);
 		sum += len;
@@ -151,7 +149,6 @@ void iovec_print(struct iovec *iov, int n_segs, int total_count)
 void scatterlist_print(struct scatterlist *sg, int n_segs)
 {
 	int seg;
-	int len;
 	struct scatterlist *s;
 
 	printk(KERN_ERR "inside scatterlist_print, sg = %p, n_segs = %d \n", sg, n_segs);
@@ -166,13 +163,12 @@ EXPORT_SYMBOL(iovec_print);
 void iov_iter_print (struct iov_iter *iter)
 {
 	struct iovec *iov;
-	int seg;
 	int total_count = 0;
 	printk(KERN_ERR "inside iov_iter_print, iter = %p \n", iter);
 	iov = iter->iov;
-	printk(KERN_ERR "type = %d, iov_offset = %d, count = %d, nr_segs = %d, total_length = %d \n", iter->type, iter->iov_offset, iter->count, iter->nr_segs, iov_length(iov, iter->nr_segs));
+	printk(KERN_ERR "type = %d, iov_offset = %ld, count = %ld, nr_segs = %ld, total_length = %ld \n", iter->type, iter->iov_offset, iter->count, iter->nr_segs, iov_length(iov, iter->nr_segs));
 	total_count = iter->count + iter->iov_offset;
-	iovec_print(iov, iter->nr_segs, total_count);
+	iovec_print(iter->iov, iter->nr_segs, total_count);
 }
 EXPORT_SYMBOL(iov_iter_print);
 
@@ -189,17 +185,12 @@ int map_iovec_to_skb(struct sk_buff *skb, struct iov_iter *from)
 	struct iovec *iov;
 	int seg;
 	int frag_num = 0;
-	struct page *p;
 	int total_length;
-	skb_frag_t *frag;
-	uint page_mask = PAGE_SIZE - 1;
 	struct page *page_info;
-	int i;
-	void *v;
 	int len, offset;
 
 	iov = from->iov;
-	total_length = iov_length(iov, from->nr_segs);
+	total_length = iov_length(from->iov, from->nr_segs);
 
 	//printk(KERN_ERR "entering map_iovec_to_skb, total_length = %d, iov = %p, count = %d\n", total_length, iov, iov_iter_count(from));
 	//skb_print(skb);
@@ -268,11 +259,40 @@ void unmap_skb_frags(struct sk_buff *skb)
 		skb_frag_unref(skb, i);
 		skb->data_len -= len;
 		skb->len -= len;
+		skb->truesize -= PAGE_SIZE;
 		shinfo->nr_frags--;
 	}
 	//printk(KERN_ERR "exiting unmap_skb_frags, skb = %p \n", skb);
 }
 EXPORT_SYMBOL(unmap_skb_frags);
+
+void wait_queue_entry_print(wait_queue_t *w)
+{
+	if (!w) return;
+	printk(KERN_ERR "wait_queue_entry_print: w = %p, flags = %x, private = %p, func = %p, task_list = %p, next = %p, prev = %p, current = %p \n",
+			w, w->flags, w->private, w->func, &w->task_list, w->task_list.next, w->task_list.prev, current);
+}
+EXPORT_SYMBOL(wait_queue_entry_print);
+
+void wait_queue_print(wait_queue_head_t *wqh)
+{
+	struct list_head *first, *curr;
+	wait_queue_t *wait;
+	printk(KERN_ERR "wait_queue_print: wqh = %p, task_list = %p, next = %p, prev = %p, current = %p \n",
+			wqh, &wqh->task_list, wqh->task_list.next, wqh->task_list.prev, current);
+	return;
+	if (list_empty(&wqh->task_list)) return;
+	first = wqh->task_list.next;
+	if (!first) return;
+	wait = container_of(first, wait_queue_t, task_list);
+	wait_queue_entry_print(wait);
+	for (curr = first->next; curr != first; curr = curr->next) {
+		wait = container_of(curr, wait_queue_t, task_list);
+		wait_queue_entry_print(wait);
+	}
+
+}
+EXPORT_SYMBOL(wait_queue_print);
 
 static int meth_init(void)
 {

@@ -11,6 +11,9 @@
 #include <linux/virtio_config.h>
 #include <linux/virtio_ring.h>
 #include <linux/atomic.h>
+#include <linux/skbuff.h>
+
+#include <linux/meth_utils.h>
 
 struct vhost_work;
 typedef void (*vhost_work_fn_t)(struct vhost_work *work);
@@ -121,6 +124,7 @@ struct vhost_virtqueue {
 	u64 log_addr;
 
 	struct iovec iov[UIO_MAXIOV];
+	struct vhost_page_info *v_page_info[UIO_MAXIOV];
 	struct iovec iotlb_iov[64];
 	struct iovec *indirect;
 	struct vring_used_elem *heads;
@@ -140,10 +144,10 @@ struct vhost_virtqueue {
 	/* Ring endianness requested by userspace for cross-endian support. */
 	bool user_be;
 #endif
-	bool post_rx_full;
-	int saved_head;
+	struct vhost_page_info *saved_desc_page_info;
 	u32 busyloop_timeout;
 	int live_bufs;
+	struct kmem_cache *virtio_desc_slab;
 };
 
 struct vhost_msg_node {
@@ -182,14 +186,6 @@ long vhost_vring_ioctl(struct vhost_dev *d, int ioctl, void __user *argp);
 int vhost_vq_access_ok(struct vhost_virtqueue *vq);
 int vhost_log_access_ok(struct vhost_dev *);
 
-int rx_vhost_get_vq_desc(struct vhost_virtqueue *,
-		      struct iovec iov[], unsigned int iov_count,
-		      unsigned int *out_num, unsigned int *in_num,
-		      struct vhost_log *log, unsigned int *log_num);
-int zcrx_vhost_get_vq_desc(struct vhost_virtqueue *,
-		      struct iovec iov[], unsigned int iov_count,
-		      unsigned int *out_num, unsigned int *in_num,
-		      struct vhost_log *log, unsigned int *log_num);
 int vhost_get_vq_desc(struct vhost_virtqueue *,
 		      struct iovec iov[], unsigned int iov_count,
 		      unsigned int *out_num, unsigned int *in_num,

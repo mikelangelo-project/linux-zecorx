@@ -83,9 +83,11 @@ struct vring_avail {
 /* u32 is used here for ids for padding reasons. */
 struct vring_used_elem {
 	/* Index of start of used descriptor chain. */
-	__virtio32 id;
+	__virtio16 id;
+	__virtio16 offset;
 	/* Total length of the descriptor chain which was used (written to) */
-	__virtio32 len;
+	__virtio16 len;
+	__virtio16 pad;
 };
 
 struct vring_used {
