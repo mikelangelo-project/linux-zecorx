@@ -190,13 +190,13 @@ static int vhost_poll_wakeup(wait_queue_t *wait, unsigned mode, int sync,
 
 void vhost_work_init(struct vhost_work *work, vhost_work_fn_t fn)
 {
-	printk(KERN_ERR "entering vhost_work_init: work = %p, fn = %p \n", work, fn);
+	//printk(KERN_ERR "entering vhost_work_init: work = %p, fn = %p \n", work, fn);
 	clear_bit(VHOST_WORK_QUEUED, &work->flags);
 	work->fn = fn;
 	init_waitqueue_head(&work->done);
 	//printk(KERN_ERR "vhost_work_init: printing work->done \n");
 	//wait_queue_print(&work->done);
-	printk(KERN_ERR "exiting vhost_work_init: work = %p, fn = %p \n", work, fn);
+	//printk(KERN_ERR "exiting vhost_work_init: work = %p, fn = %p \n", work, fn);
 }
 EXPORT_SYMBOL_GPL(vhost_work_init);
 
@@ -204,7 +204,7 @@ EXPORT_SYMBOL_GPL(vhost_work_init);
 void vhost_poll_init(struct vhost_poll *poll, vhost_work_fn_t fn,
 		     unsigned long mask, struct vhost_dev *dev)
 {
-	printk(KERN_ERR "entering vhost_poll_init: poll = %p, wait = %p \n", poll, &poll->wait);
+	//printk(KERN_ERR "entering vhost_poll_init: poll = %p, wait = %p \n", poll, &poll->wait);
 	init_waitqueue_func_entry(&poll->wait, vhost_poll_wakeup);
 	init_poll_funcptr(&poll->table, vhost_poll_func);
 	poll->mask = mask;

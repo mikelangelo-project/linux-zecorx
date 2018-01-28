@@ -797,7 +797,9 @@ static int macvtap_release(struct inode *inode, struct file *file)
 	struct vhost_page_info *v_page_info;
 	int bkt;
 
-	printk(KERN_ERR "entering macvtap_release \n");
+	//printk(KERN_ERR "entering macvtap_release \n");
+	printk(KERN_ERR "entering macvtap_release; skip release of pages \n");
+	return 0;
 	/* unpin user pages that were allocated for this device */
 	/* do we have to actually remove them from the hashtable? */
 	hash_for_each(q->desc_hash_table, bkt, v_page_info, h_link) {
@@ -1118,7 +1120,7 @@ static int macvtap_post_rx_buffer(struct macvtap_queue *q, struct msghdr *m)
 			ret = 0;
 
 			/* pin the page */
-			get_user_pages_fast(v_page_info->virt_page_addr, 1, 1, &page);
+			get_user_pages_fast((long unsigned int)v_page_info->virt_page_addr, 1, 1, &page);
 			/* attach the page to the skb */
 			skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags, page, 0, v_page_info->virt_page_len, v_page_info->virt_page_len);
 			v_page_info->page = page;
@@ -1151,8 +1153,6 @@ err1:
 static int macvtap_do_read_zero_copy(struct macvtap_queue *q, struct msghdr *m, int noblock)
 {
 	struct sk_buff *head_skb;
-	int len;
-	skb_frag_t *frag;
 	struct page *page;
 	struct vhost_page_info *v_page_info;
 	struct vhost_page_info **v_page_infos;
@@ -1195,7 +1195,7 @@ static int macvtap_do_read_zero_copy(struct macvtap_queue *q, struct msghdr *m, 
 		}
 
 		/* map the page */
-		get_user_pages_fast(v_page_info->virt_page_addr, 1, 1, &page);
+		get_user_pages_fast((long unsigned int) v_page_info->virt_page_addr, 1, 1, &page);
 		v_page_info->page = page;
 		p = page_address(page);
 		memcpy(p, head_skb->data, head_skb->len);

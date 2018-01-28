@@ -1362,8 +1362,8 @@ static long vhost_net_set_backend(struct vhost_net *n, unsigned index, int fd)
 	struct vhost_net_ubuf_ref *ubufs, *oldubufs = NULL;
 	int r;
 
-	printk(KERN_ERR "entering vhost_net_set_backend, n = %p, index = %d, fd = %d \n", n, index, fd);
-	printk(KERN_ERR "vhost_net_set_backend, current = %p \n", current);
+	//printk(KERN_ERR "entering vhost_net_set_backend, n = %p, index = %d, fd = %d \n", n, index, fd);
+	//printk(KERN_ERR "vhost_net_set_backend, current = %p \n", current);
 	//printk(KERN_ERR "vhost_net_set_backend; before mutex_lock \n");
 	mutex_lock(&n->dev.mutex);
 	r = vhost_dev_check_owner(&n->dev);
@@ -1376,19 +1376,19 @@ static long vhost_net_set_backend(struct vhost_net *n, unsigned index, int fd)
 	}
 	vq = &n->vqs[index].vq;
 	nvq = &n->vqs[index];
-	printk(KERN_ERR "vhost_net_set_backend; before mutex_lock \n");
+	//printk(KERN_ERR "vhost_net_set_backend; before mutex_lock \n");
 	mutex_lock(&vq->mutex);
 
 	/* Verify that ring has been setup correctly. */
-	printk(KERN_ERR "vhost_net_set_backend; before vhost_vq_access_ok \n");
+	//printk(KERN_ERR "vhost_net_set_backend; before vhost_vq_access_ok \n");
 	if (!vhost_vq_access_ok(vq)) {
 		r = -EFAULT;
 		goto err_vq;
 	}
-	printk(KERN_ERR "vhost_net_set_backend; before get_socket \n");
+	//printk(KERN_ERR "vhost_net_set_backend; before get_socket \n");
 	sock = get_socket(fd);
-	printk(KERN_ERR "vhost_net_set_backend; after get_socket \n");
-	printk(KERN_ERR "vhost_net_set_backend: socket = %p \n", sock);
+	//printk(KERN_ERR "vhost_net_set_backend; after get_socket \n");
+	//printk(KERN_ERR "vhost_net_set_backend: socket = %p \n", sock);
 	if (IS_ERR(sock)) {
 		r = PTR_ERR(sock);
 		goto err_vq;
@@ -1436,7 +1436,7 @@ static long vhost_net_set_backend(struct vhost_net *n, unsigned index, int fd)
 	}
 
 	mutex_unlock(&n->dev.mutex);
-	printk(KERN_ERR "exiting vhost_net_set_backend, n = %p, index = %d, fd = %d \n", n, index, fd);
+	//printk(KERN_ERR "exiting vhost_net_set_backend, n = %p, index = %d, fd = %d \n", n, index, fd);
 	return 0;
 
 err_used:
