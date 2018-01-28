@@ -32,7 +32,7 @@
 #include "vhost.h"
 
 static int experimental_zcopytx = 1;
-static int experimental_zcopyrx = 1;
+//static int experimental_zcopyrx = 1;
 module_param(experimental_zcopytx, int, 0444);
 MODULE_PARM_DESC(experimental_zcopytx, "Enable Zero Copy TX;"
 		                       " 1 -Enable; 0 - Disable");
@@ -1171,6 +1171,7 @@ static int vhost_net_open(struct inode *inode, struct file *f)
 		//vhost_net_features &= ~(1ULL << VIRTIO_NET_F_CSUM);
 		//vhost_net_features &= ~(1ULL << VIRTIO_F_ANY_LAYOUT);
 		//vhost_net_features &= ~(1ULL << VIRTIO_RING_F_INDIRECT_DESC);
+		printk(KERN_ERR "vhost_net_open, setting VIRTIO_NET_ZERO_COPY_RX \n");
 		vhost_net_features |= (1ULL << VIRTIO_NET_ZERO_COPY_RX);
 	}
 	printk(KERN_ERR "vhost_net_open, vhost_net_features = %llx \n", vhost_net_features);

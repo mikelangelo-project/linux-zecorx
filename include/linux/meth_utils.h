@@ -42,4 +42,6 @@ void wait_queue_print(wait_queue_head_t *wqh);
 #define MSG_ZCOPY_RX		0x400000
 #define MSG_ZCOPY_RX_POST	0x800000
 
+static int experimental_zcopyrx = 1;
+
 #endif /* __METH_UTILS_H */

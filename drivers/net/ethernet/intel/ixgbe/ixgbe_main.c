@@ -4194,7 +4194,7 @@ static void ixgbe_configure_rx(struct ixgbe_adapter *adapter)
 	printk(KERN_ERR "ixgbe_configure_rx, num_rx_queues = %d \n", adapter->num_rx_queues);
 	for (i = 0; i < adapter->num_rx_queues; i++)
 	{
-		printk(KERN_ERR "before ixgbe_configure_rx_ring, adapter = %p, i = %d, ring = %p \n", adapter, i, adapter->rx_ring[i]);
+		//printk(KERN_ERR "before ixgbe_configure_rx_ring, adapter = %p, i = %d, ring = %p \n", adapter, i, adapter->rx_ring[i]);
 		ixgbe_configure_rx_ring(adapter, adapter->rx_ring[i]);
 	}
 
@@ -9595,6 +9595,10 @@ static int ixgbe_set_zero_copy_rx(struct net_device *dev, struct net_device *bas
 	struct ixgbe_ring *rx_ring;
 	int ring_index;
 	printk(KERN_ERR "entering ixgbe_set_zero_copy_rx, dev = %p, base_dev = %p\n", dev, base_dev);
+	if (!experimental_zcopyrx) {
+		printk(KERN_ERR "ixgbe_set_zero_copy_rx, zero copy not supported \n");
+		return -ENOTSUPP;
+	}
 	my_netdev_printk(dev);
 	my_netdev_printk(base_dev);
 	// assume we can map the device to a queue
