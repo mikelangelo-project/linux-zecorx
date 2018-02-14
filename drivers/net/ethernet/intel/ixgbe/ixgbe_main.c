@@ -2201,7 +2201,7 @@ static struct sk_buff *ixgbe_fetch_rx_buffer(struct ixgbe_ring *rx_ring,
 	//rx_buffer_print(rx_buffer);
 	page = rx_buffer->page;
 	if (!page || (ntu == ntc)) {
-		//printk(KERN_ERR "ixgbe_fetch_rx_buffer: page is NULL; rx_ring = %p, rx_buffer = %p, next_to_clean = %d, next_to_use = %d, page = %p \n", rx_ring, rx_buffer, rx_ring->next_to_clean, rx_ring->next_to_use, page);
+		trace_printk(KERN_ERR "ixgbe_fetch_rx_buffer: page is NULL; rx_ring = %p, rx_buffer = %p, next_to_clean = %d, next_to_use = %d, page = %p \n", rx_ring, rx_buffer, rx_ring->next_to_clean, rx_ring->next_to_use, page);
 		return NULL;
 	}
 	prefetchw(page);
@@ -2305,6 +2305,7 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 	unsigned int mss = 0;
 #endif /* IXGBE_FCOE */
 	u16 cleaned_count = ixgbe_desc_unused(rx_ring);
+	u16 cleaned_count_tmp = cleaned_count;
 
 	while (likely(total_rx_packets < budget)) {
 		union ixgbe_adv_rx_desc *rx_desc;
@@ -2409,6 +2410,9 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 	q_vector->rx.total_packets += total_rx_packets;
 	q_vector->rx.total_bytes += total_rx_bytes;
 
+	if (rx_ring->zero_copy && (cleaned_count_tmp || total_rx_packets)) {
+		trace_printk(KERN_ERR "ixgbe_clean_rx_irq, buffers missing from ring = %d, total_rx_packets processed = %d \n", cleaned_count_tmp, total_rx_packets);
+	}
 	return total_rx_packets;
 }
 
@@ -3110,7 +3114,11 @@ int ixgbe_poll(struct napi_struct *napi, int budget)
 	if (!test_bit(__IXGBE_DOWN, &adapter->state))
 		ixgbe_irq_enable_queues(adapter, BIT_ULL(q_vector->v_idx));
 
-	//printk(KERN_ERR "exiting ixgbe_poll, vector = %p, budget = %d, work_done = %d \n", q_vector, budget, work_done);
+	/*
+	if (work_done) {
+		printk(KERN_ERR "exiting ixgbe_poll, vector = %p, budget = %d, work_done = %d \n", q_vector, budget, work_done);
+	}
+	*/
 	return min(work_done, budget - 1);
 }
 
@@ -9605,7 +9613,7 @@ static int ixgbe_set_zero_copy_rx(struct net_device *dev, struct net_device *bas
 	// release existing buffers so that we can use our own
 	printk(KERN_ERR "ixgbe_set_zero_copy_rx, before ixgbe_get_ring_index \n");
 	ring_index = ixgbe_get_ring_index(adapter, base_dev);
-	printk(KERN_ERR "ixgbe_set_zero_copy_rx, after ixgbe_get_ring_index \n");
+	printk(KERN_ERR "ixgbe_set_zero_copy_rx, after ixgbe_get_ring_index, ring_index = %d \n", ring_index);
 	if (ring_index < 0) {
 		return -ENXIO;
 	}

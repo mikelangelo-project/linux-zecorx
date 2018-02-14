@@ -161,7 +161,8 @@ static void vhost_poll_func(struct file *file, wait_queue_head_t *wqh,
 	struct vhost_poll *poll;
 
 	poll = container_of(pt, struct vhost_poll, table);
-	//printk(KERN_ERR "entering vhost_poll_func, wqh = %p, poll = %p, current = %p \n", wqh, poll, current);
+	//printk(KERN_ERR "entering vhost_poll_func, wqh = %p, poll = %p, wait = %p, current = %p \n", wqh, poll, &poll->wait, current);
+	trace_printk(KERN_ERR "vhost_poll_func, wqh = %p, poll table = %p, poll = %p, wait = %p \n", wqh, pt, poll, &poll->wait);
 	//dump_stack();
 	poll->wqh = wqh;
 	//wait_queue_print(wqh);
@@ -175,12 +176,12 @@ static int vhost_poll_wakeup(wait_queue_t *wait, unsigned mode, int sync,
 {
 	struct vhost_poll *poll = container_of(wait, struct vhost_poll, wait);
 
-	//printk(KERN_ERR "entering vhost_poll_wakeup, poll = %p, wait = %p, key = %p, poll->mask = %x, current = %p \n", poll, wait, key, poll->mask, current);
+	//trace_printk(KERN_ERR "entering vhost_poll_wakeup, poll = %p, wait = %p, key = %lx, poll->mask = %lx, current = %p \n", poll, wait, key, poll->mask, current);
 	//wait_queue_entry_print(wait);
 	//dump_stack();
 	if (!((unsigned long)key & poll->mask))
 	{
-		//printk(KERN_ERR "vhost_poll_wakeup, key does not match poll->mask; not calling vhost_poll_queue \n");
+		//trace_printk(KERN_ERR "vhost_poll_wakeup, key does not match poll->mask; not calling vhost_poll_queue, key = %p, mask = %lx \n", key, poll->mask);
 		return 0;
 	}
 
@@ -204,7 +205,7 @@ EXPORT_SYMBOL_GPL(vhost_work_init);
 void vhost_poll_init(struct vhost_poll *poll, vhost_work_fn_t fn,
 		     unsigned long mask, struct vhost_dev *dev)
 {
-	//printk(KERN_ERR "entering vhost_poll_init: poll = %p, wait = %p \n", poll, &poll->wait);
+	printk(KERN_ERR "entering vhost_poll_init: poll = %p, wait = %p \n", poll, &poll->wait);
 	init_waitqueue_func_entry(&poll->wait, vhost_poll_wakeup);
 	init_poll_funcptr(&poll->table, vhost_poll_func);
 	poll->mask = mask;
@@ -254,11 +255,11 @@ void vhost_poll_stop(struct vhost_poll *poll)
 	//printk(KERN_ERR "entering vhost_poll_stop: poll = %p, current = %p \n", poll, current);
 	//dump_stack();
 	if (poll->wqh) {
-		//printk(KERN_ERR "vhost_poll_stop: before remove_wait_queue; poll = %p, wqh = %p, wait = %p, current = %p \n", poll, poll->wqh, &poll->wait, current);
+		trace_printk(KERN_ERR "vhost_poll_stop: before remove_wait_queue; poll = %p, wqh = %p, wait = %p, current = %p \n", poll, poll->wqh, &poll->wait, current);
 		//wait_queue_print(poll->wqh);
 		//wait_queue_entry_print(&poll->wait);
 		remove_wait_queue(poll->wqh, &poll->wait);
-		//printk(KERN_ERR "vhost_poll_stop: after remove_wait_queue; poll = %p, wqh = %p, wait = %p, current = %p \n", poll, poll->wqh, &poll->wait, current);
+		trace_printk(KERN_ERR "vhost_poll_stop: after remove_wait_queue; poll = %p, wqh = %p, wait = %p, current = %p \n", poll, poll->wqh, &poll->wait, current);
 		//wait_queue_print(poll->wqh);
 		//wait_queue_entry_print(&poll->wait);
 		poll->wqh = NULL;
@@ -309,9 +310,11 @@ void vhost_work_queue(struct vhost_dev *dev, struct vhost_work *work)
 		 */
 		smp_mb();
 		llist_add(&work->node, &dev->work_list);
-		//printk(KERN_ERR "vhost_work_queue, before wake_up_process, worker = %p, current = %p \n", dev->worker, current);
+		//trace_printk(KERN_ERR "vhost_work_queue, before wake_up_process, worker = %p, current = %p \n", dev->worker, current);
+		//my_print_state(dev->worker);
 		wake_up_process(dev->worker);
-		//printk(KERN_ERR "vhost_work_queue, after wake_up_process, worker = %p, current = %p \n", dev->worker, current);
+		//trace_printk(KERN_ERR "vhost_work_queue, after wake_up_process, worker = %p, current = %p \n", dev->worker, current);
+		//my_print_state(dev->worker);
 	}
 }
 EXPORT_SYMBOL_GPL(vhost_work_queue);
@@ -391,9 +394,11 @@ static int vhost_worker(void *data)
 		//printk(KERN_ERR "vhost_worker, after llist_del_all, node = %p, currrent = %p \n", node, current);
 		if (!node)
 		{
-			//printk(KERN_ERR "vhost_worker, before schedule 1, current = %p \n", current);
+			trace_printk(KERN_ERR "vhost_worker, before schedule 1, current = %p \n", current);
+			//my_print_state(current);
 			schedule();
-			//printk(KERN_ERR "vhost_worker, after schedule 1, current = %p \n", current);
+			trace_printk(KERN_ERR "vhost_worker, after schedule 1, current = %p \n", current);
+			//my_print_state(current);
 		}
 
 		//printk(KERN_ERR "vhost_worker, before llist_reverse_order, node = %p current = %p \n", node, current);
@@ -412,10 +417,12 @@ static int vhost_worker(void *data)
 			//wait_queue_print(&work->done);
 			if (need_resched())
 			{
-				//printk(KERN_ERR "vhost_worker, before schedule 2, current = %p \n", current);
+				trace_printk(KERN_ERR "vhost_worker, before schedule 2, current = %p \n", current);
+				//my_print_state(current);
 				//wait_queue_print(&work->done);
 				schedule();
-				//printk(KERN_ERR "vhost_worker, after schedule 2, current = %p \n", current);
+				trace_printk(KERN_ERR "vhost_worker, after schedule 2, current = %p \n", current);
+				//my_print_state(current);
 				//wait_queue_print(&work->done);
 			}
 		}
@@ -2321,7 +2328,6 @@ void vhost_add_used_and_signal_n(struct vhost_dev *dev,
 		struct vhost_virtqueue *vq,
 		struct vring_used_elem *heads, unsigned count)
 {
-	int i;
 	vhost_add_used_n(vq, heads, count);
 	vhost_signal(dev, vq);
 }

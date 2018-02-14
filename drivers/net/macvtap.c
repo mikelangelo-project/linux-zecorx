@@ -499,7 +499,7 @@ static rx_handler_result_t macvtap_handle_frame(struct sk_buff **pskb)
 
 
 	if (__skb_array_full(&q->skb_array)) {
-		printk(KERN_ERR "macvtap_handle_frame, skb array is full; need to drop packet \n");
+		trace_printk(KERN_ERR "macvtap_handle_frame, skb array is full; need to drop packet \n");
 		/* KM xxx added wakeup of vhost thread */
 		//wake_up_interruptible_poll(sk_sleep(&q->sk), POLLIN | POLLRDNORM | POLLRDBAND);
 		goto drop;
@@ -554,7 +554,8 @@ static rx_handler_result_t macvtap_handle_frame(struct sk_buff **pskb)
 	}
 
 wake_up:
-	//printk(KERN_ERR "macvtap_handle_frame, before wakeup, returning RX_HANDLER_CONSUMED; sk = %p, skb = %p, frags = %d, current = %p \n", &q->sk, skb, skb_shinfo(skb)->nr_frags, current);
+	//trace_printk(KERN_ERR "macvtap_handle_frame, before wakeup, \n");
+	trace_printk(KERN_ERR "macvtap_handle_frame, before wakeup, returning RX_HANDLER_CONSUMED; sk = %p, skb = %p, frags = %d, current = %p \n", &q->sk, skb, skb_shinfo(skb)->nr_frags, current);
 	//wait_queue_print(&rcu_dereference_raw(q->sk.sk_wq)->wait);
 	//wait_queue_print(&q->sk.sk_wq->wait);
 	wake_up_interruptible_poll(sk_sleep(&q->sk), POLLIN | POLLRDNORM | POLLRDBAND);
@@ -579,7 +580,7 @@ drop:
 		//skb_print_short(skb);
 		for (i = 0; i < n_buffers; i++) {
 			v_page_info = v_page_infos[i];
-			printk(KERN_ERR "macvtap_handle_frame, buffer dropped, desc = %d, page = %p, skb = %p \n", v_page_info->desc, v_page_info->page, skb);
+			trace_printk(KERN_ERR "macvtap_handle_frame, buffer dropped, desc = %d, page = %p, skb = %p \n", v_page_info->desc, v_page_info->page, skb);
 			/* need to perform callback to vhost to free up buffer */
 			v_page_info->len = 0;
 			v_page_info->offset = 0;
@@ -798,14 +799,14 @@ static int macvtap_release(struct inode *inode, struct file *file)
 	int bkt;
 
 	//printk(KERN_ERR "entering macvtap_release \n");
-	printk(KERN_ERR "entering macvtap_release; skip release of pages \n");
-	return 0;
 	/* unpin user pages that were allocated for this device */
 	/* do we have to actually remove them from the hashtable? */
+	/* xxx KM this doesn't yet work right
 	hash_for_each(q->desc_hash_table, bkt, v_page_info, h_link) {
 		put_page(v_page_info->page);
-		/* need to return the v_page_info structure to the vhost vhost_desc_slab via callback */
+		// need to return the v_page_info structure to the vhost vhost_desc_slab via callback
 	}
+	*/
 
 	macvtap_put_queue(q);
 	printk(KERN_ERR "exiting macvtap_release \n");
@@ -821,6 +822,7 @@ static unsigned int macvtap_poll(struct file *file, poll_table * wait)
 		goto out;
 
 	mask = 0;
+	//trace_printk(KERN_ERR "macvtap_poll: socket q head = %p, poll_table struct = %p \n", &q->wq.wait, wait);
 	poll_wait(file, &q->wq.wait, wait);
 
 	if (!skb_array_empty(&q->skb_array))
@@ -1212,7 +1214,7 @@ static int macvtap_do_read_zero_copy(struct macvtap_queue *q, struct msghdr *m, 
 	ret = convert_skb_to_page_infos(q, head_skb, &v_page_infos[1]);
 	consume_skb(head_skb);
 
-	//printk(KERN_ERR "macvtap_do_read_zero_copy: ret = %d, skb = %p \n", ret, head_skb);
+	trace_printk(KERN_ERR "macvtap_do_read_zero_copy: ret = %d, skb = %p \n", ret, head_skb);
 	return ret;
 }
 

@@ -44,4 +44,7 @@ void wait_queue_print(wait_queue_head_t *wqh);
 
 static int experimental_zcopyrx = 1;
 
+
+#define my_print_state(tsk) trace_printk(KERN_ERR "%s:%d:[%s]: current = %p, tsk = %p, pid = %d, state = %lx \n", __FILE__, __LINE__, __func__, current, tsk, tsk->pid, tsk->state)
+
 #endif /* __METH_UTILS_H */

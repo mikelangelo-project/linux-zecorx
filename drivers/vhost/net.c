@@ -367,6 +367,7 @@ static int vhost_net_enable_vq(struct vhost_net *n,
 	struct vhost_poll *poll = n->poll + (nvq - n->vqs);
 	struct socket *sock;
 
+	//printk(KERN_ERR "entering vhost_net_enable_vq, current = %p \n", current);
 	sock = vq->private_data;
 	if (!sock)
 		return 0;
@@ -677,7 +678,7 @@ err:
 	return r;
 }
 
-static struct vhost_page_info *zcrx_vhost_get_vq_desc(struct vhost_net *net, struct vhost_virtqueue *vq)
+struct vhost_page_info *zcrx_vhost_get_vq_desc(struct vhost_net *net, struct vhost_virtqueue *vq)
 {
 	struct vhost_page_info *v_page_info;
 	int in, out;
@@ -718,6 +719,7 @@ static struct vhost_page_info *zcrx_vhost_get_vq_desc(struct vhost_net *net, str
 	v_page_info->offset = 0;
 	return v_page_info;
 }
+EXPORT_SYMBOL_GPL(zcrx_vhost_get_vq_desc);
 
 static int post_buffers(struct vhost_net *net)
 {
@@ -735,12 +737,13 @@ static int post_buffers(struct vhost_net *net)
 	int num_bufs_posted = 0;
 	struct vhost_page_info *v_page_info;
 
-	//printk(KERN_ERR "entering post_buffers, vq = %p, live_bufs = %d \n", vq, vq->live_bufs);
+	trace_printk(KERN_ERR "entering post_buffers, vq = %p, live_bufs = %d \n", vq, vq->live_bufs);
 
 	sock = vq->private_data;
 
-
-	while (true) {
+	/* do only a limited number in each iteration in order not to block processing of completed buffers */
+#define POST_BUF_LIMIT 64
+	while (num_bufs_posted < POST_BUF_LIMIT) {
 		/* post next buffer; see if we already have one that we took off the queue and needed to wait */
 		//printk(KERN_ERR "post_buffers, saved_desc_page_info = %d \n", vq->saved_desc_page_info);
 		v_page_info = zcrx_vhost_get_vq_desc(net, vq);
@@ -775,10 +778,15 @@ static int post_buffers(struct vhost_net *net)
 	}
 	//printk(KERN_ERR "post_buffers: num_bufs_posted = %d \n", num_bufs_posted);
 	//if (vhost_enable_notify(&net->dev, vq) || num_bufs_posted)
+	/*
+	if (num_bufs_posted == POST_BUF_LIMIT) {
+		vhost_poll_queue(&vq->poll);
+	}
+	*/
 	if (num_bufs_posted)
 	{
 		/* need to schedule posting of additional available buffers */
-		//printk(KERN_ERR "post_buffers, vq = %p, num_bufs_posted = %d, live_bufs = %d \n", vq, num_bufs_posted, vq->live_bufs);
+		trace_printk(KERN_ERR "post_buffers, vq = %p, num_bufs_posted = %d, live_bufs = %d \n", vq, num_bufs_posted, vq->live_bufs);
 		//vhost_poll_queue(&vq->poll);
 	}
 
@@ -818,8 +826,11 @@ static void handle_rx_zcopy(struct vhost_net *net)
 	int cnt = 0;
 	size_t total_len = 0;
 	int sock_len;
+	int total_buffers = 0;
+	int n_bufs_posted = 0;
 
-	//printk(KERN_ERR "entering handle_rx_zcopy, vq = %p, current = %p \n", vq, current);
+	trace_printk(KERN_ERR "entering handle_rx_zcopy, vq = %p, live_bufs = %d, current = %p \n", vq, vq->live_bufs, current);
+	//my_print_state(current);
 
 	sock = vq->private_data;
 	if (!sock) {
@@ -827,18 +838,19 @@ static void handle_rx_zcopy(struct vhost_net *net)
 		goto out;
 	}
 
-	//printk(KERN_ERR "handle_rx_zcopy, before vq_iotlb_prefetch \n");
+	//printk(KERN_ERR "handle_rx_zcopy, before vq_iotlb_prefetch, current = %p \n", current);
+	//my_print_state(current);
 	// xxx KM what does this do? why does it take so long?
 	if (!vq_iotlb_prefetch(vq))
 		goto out;
 
-	//printk(KERN_ERR "handle_rx_zcopy, before vhost_disable_notify \n");
+	//printk(KERN_ERR "handle_rx_zcopy, before vhost_disable_notify, current = %p \n", current);
 	vhost_disable_notify(&net->dev, vq);
-	//printk(KERN_ERR "handle_rx_zcopy, before vhost_net_disable_vq \n");
+	//printk(KERN_ERR "handle_rx_zcopy, before vhost_net_disable_vq, current = %p \n", current);
 	vhost_net_disable_vq(net, vq);
-	//printk(KERN_ERR "handle_rx_zcopy, after vhost_net_disable_vq \n");
+	//printk(KERN_ERR "handle_rx_zcopy, after vhost_net_disable_vq, current = %p \n", current);
 
-	post_buffers(net);
+	n_bufs_posted += post_buffers(net);
 
 	//hdr_size = nvq->vhost_hlen;
 	//hdr_size = nvq->vhost_hlen + nvq->sock_hlen;
@@ -915,11 +927,12 @@ static void handle_rx_zcopy(struct vhost_net *net)
 		/* every so often, need to enable posting of additional buffers and to re-kick the handle_rx thread */
 		/* values that work: 32, 16 */
 		cnt += n_buffers;
+		total_buffers += n_buffers;
 #define BUF_WATERMARK	32
 		if (cnt > BUF_WATERMARK) {
 			//printk(KERN_ERR "handle_rx_zcopy, setting poll, poll = %p \n", &vq->poll);
 			cnt = 0;
-			post_buffers(net);
+			n_bufs_posted += post_buffers(net);
 			//vhost_poll_queue(&vq->poll);
 			//goto out;
 			//break;
@@ -928,16 +941,23 @@ static void handle_rx_zcopy(struct vhost_net *net)
 		if (unlikely(total_len >= VHOST_NET_WEIGHT)) {
 			//printk(KERN_ERR "handle_rx: total_len = %d \n", total_len);
 			//vhost_signal(&net->dev, vq);
-			vhost_poll_queue(&vq->poll);
-			goto out;
-			//break;
+			//vhost_poll_queue(&vq->poll);
+			//goto out;
+			break;
 		}
 		*/
 	}
-	//post_buffers(net);
 	/*
-	printk(KERN_ERR "handle_rx_zcopy, before if: total_len = %d \n", total_len);
-	if (total_len) {
+	// if (n_bufs_posted || total_len)
+	if (n_bufs_posted || (total_len >= VHOST_NET_WEIGHT))
+	{
+		vhost_poll_queue(&vq->poll);
+		//goto out;
+	}
+	*/
+	//printk(KERN_ERR "handle_rx_zcopy, before if: total_len = %d \n", total_len);
+	/*
+	if (total_buffers) {
 		vhost_signal(&net->dev, vq);
 	}
 	*/
@@ -945,12 +965,12 @@ static void handle_rx_zcopy(struct vhost_net *net)
 
 	//printk(KERN_ERR "handle_rx_zcopy, before vhost_net_enable_vq \n");
 	vhost_net_enable_vq(net, vq);
+
+out:
 	//printk(KERN_ERR "handle_rx_zcopy, before vhost_enable_notify \n");
 	vhost_enable_notify(&net->dev, vq);
 	//printk(KERN_ERR "handle_rx_zcopy, after vhost_net_enable_vq \n");
-
-out:
-	//printk(KERN_ERR "exiting handle_rx_zcopy, vq = %p, cnt = %d, n_buffers = %d \n", vq, cnt, n_buffers);
+	trace_printk(KERN_ERR "exiting handle_rx_zcopy, vq = %p, total_buffers_read = %d, n_bufs_posted = %d, live_bufs = %d \n", vq, total_buffers, n_bufs_posted, vq->live_bufs);
 	return;
 }
 
@@ -1204,7 +1224,9 @@ static int vhost_net_open(struct inode *inode, struct file *f)
 	}
 	vhost_dev_init(dev, vqs, VHOST_NET_VQ_MAX);
 
+	printk(KERN_ERR "before vhost_poll_init VHOST_NET_VQ_TX \n");
 	vhost_poll_init(n->poll + VHOST_NET_VQ_TX, handle_tx_net, POLLOUT, dev);
+	printk(KERN_ERR "before vhost_poll_init VHOST_NET_VQ_RX \n");
 	vhost_poll_init(n->poll + VHOST_NET_VQ_RX, handle_rx_net, POLLIN, dev);
 
 	f->private_data = n;
