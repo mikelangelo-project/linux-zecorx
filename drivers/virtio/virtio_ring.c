@@ -660,7 +660,7 @@ static inline bool more_used(const struct vring_virtqueue *vq)
  * Returns NULL if there are no used buffers, or the "data" token
  * handed to virtqueue_add_*().
  */
-void *virtqueue_get_buf(struct virtqueue *_vq, unsigned int *len)
+void *virtqueue_get_buf2(struct virtqueue *_vq, unsigned int *len, unsigned int *offset)
 {
 	struct vring_virtqueue *vq = to_vvq(_vq);
 	void *ret;
@@ -684,8 +684,10 @@ void *virtqueue_get_buf(struct virtqueue *_vq, unsigned int *len)
 	virtio_rmb(vq->weak_barriers);
 
 	last_used = (vq->last_used_idx & (vq->vring.num - 1));
-	i = virtio32_to_cpu(_vq->vdev, vq->vring.used->ring[last_used].id);
-	*len = virtio32_to_cpu(_vq->vdev, vq->vring.used->ring[last_used].len);
+	i = virtio16_to_cpu(_vq->vdev, vq->vring.used->ring[last_used].id);
+	*offset = virtio16_to_cpu(_vq->vdev, vq->vring.used->ring[last_used].offset);
+	*len = virtio16_to_cpu(_vq->vdev, vq->vring.used->ring[last_used].len);
+	//printk(KERN_ERR "virtqueue_get_buf2: vq = %p, last_used = %d, desc = %d, len = %d, offset = %d \n", vq, last_used, i, *len, *offset);
 
 	if (unlikely(i >= vq->vring.num)) {
 		BAD_RING(vq, "id %u out of range\n", i);
@@ -713,6 +715,17 @@ void *virtqueue_get_buf(struct virtqueue *_vq, unsigned int *len)
 #endif
 
 	END_USE(vq);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(virtqueue_get_buf2);
+
+void *virtqueue_get_buf(struct virtqueue *_vq, unsigned int *len)
+{
+	void *ret;
+	unsigned int offset;
+
+	offset = 0;
+	ret = virtqueue_get_buf2(_vq, len, &offset);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(virtqueue_get_buf);
