@@ -352,7 +352,6 @@ static struct sk_buff *receive_full_page(struct virtnet_info *vi,
 	struct sk_buff *head_skb;
 	struct sk_buff *curr_skb;
 
-	//printk(KERN_ERR "entering receive_full_page, rq = %p, vi = %p, buf = %p, len = %d, offset = %d \n", rq, vi, buf, len, offset1);
 	head_skb = buf;
 	p = skb_page_ptr(head_skb);
 	memcpy(&page, p, sizeof(struct page *));
@@ -361,14 +360,9 @@ static struct sk_buff *receive_full_page(struct virtnet_info *vi,
 	/* xxx do we need to reset the skb? */
 
 	hdr = skb_vnet_hdr(head_skb);
-	//printk(KERN_ERR "receive_full_page, vnet hdr = %p \n", hdr);
 	num_buf = virtio16_to_cpu(vi->vdev, hdr->num_buffers);
 
 	/* fix up the counters; copy packet headers to skb space */
-	//len -= hdr_len;
-	//len -= offset1;
-	//printk(KERN_ERR "receive_full_page, rq = %p, vi = %p, buf = %p, len = %d, offset = %d, num_buf = %d \n", rq, vi, buf, len, offset1, num_buf);
-	//printk(KERN_ERR "receive_full_page, hdr = %p, flags = %x, gso_type = %d \n", hdr, hdr->hdr.flags, hdr->hdr.gso_type);
 	p = page_address(page);
 	p += offset1;
 	copy = len;
@@ -376,7 +370,6 @@ static struct sk_buff *receive_full_page(struct virtnet_info *vi,
 		copy = skb_tailroom(head_skb);
 	memcpy(skb_put(head_skb, copy), p, copy);
 	len -= copy;
-	//offset = copy;
 	offset = copy + offset1;
 	// xxx set truesize
 
@@ -391,7 +384,6 @@ static struct sk_buff *receive_full_page(struct virtnet_info *vi,
 		//skb_print(head_skb);
 		return head_skb;
 	}
-	//printk(KERN_ERR "receive_full_page, rq = %p, vi = %p, buf = %p, len = %d, offset = %d, num_buf = %d \n", rq, vi, buf, len, offset1, num_buf);
 
 	/* collect additional buffers related to current message header  */
 	curr_skb = head_skb;
@@ -408,9 +400,6 @@ static struct sk_buff *receive_full_page(struct virtnet_info *vi,
 		skb2 = buf2;
 		p = skb_page_ptr(skb2);
 		memcpy(&page, p, sizeof(struct page *));
-		//len2 -= hdr_len;
-		//len2 -= offset;
-		//printk(KERN_ERR "receive_full_page, rq = %p, vi = %p, buf = %p, len = %d, offset = %d, num_buf = %d \n", rq, vi, buf2, len2, offset, num_buf);
 		num_skb_frags = skb_shinfo(curr_skb)->nr_frags;
 		if (unlikely(num_skb_frags == MAX_SKB_FRAGS)) {
 			struct sk_buff *nskb = alloc_skb(0, GFP_ATOMIC);
@@ -436,14 +425,8 @@ static struct sk_buff *receive_full_page(struct virtnet_info *vi,
 		}
 
 		skb_add_rx_frag(curr_skb, skb_shinfo(curr_skb)->nr_frags, page, offset, len2, PAGE_SIZE);
-		//skb_fill_page_desc(skb, skb_shinfo(skb)->nr_frags, page, offset, len2);
 		kfree_skb(skb2);
 	}
-	//skb_print_short(skb);
-	//skb_print(head_skb);
-	//printk(KERN_ERR "exiting receive_full_page, rq = %p, vi = %p, buf = %p, len = %d \n", rq, vi, buf, len);
-	/* xxx KM temprorary hack to get past checksum, */
-	//hdr->hdr.flags |= VIRTIO_NET_HDR_F_DATA_VALID;
 
 	return head_skb;
 }
@@ -497,7 +480,6 @@ static struct sk_buff *receive_mergeable(struct net_device *dev,
 	struct sk_buff *head_skb = page_to_skb(vi, rq, page, offset, len,
 					       truesize);
 	struct sk_buff *curr_skb = head_skb;
-	//printk(KERN_ERR "receive_mergeable: num_buf = %d \n", num_buf);
 
 	if (unlikely(!curr_skb))
 		goto err_skb;
@@ -538,7 +520,6 @@ static struct sk_buff *receive_mergeable(struct net_device *dev,
 			head_skb->truesize += truesize;
 		}
 		offset = buf - page_address(page);
-		//printk(KERN_ERR "receive_mergeable: buf = %p, page = %p, offset = %d %x, len = %d %x \n", buf, page_address(page), offset, offset, len, len);
 		if (skb_can_coalesce(curr_skb, num_skb_frags, page, offset)) {
 			put_page(page);
 			skb_coalesce_rx_frag(curr_skb, num_skb_frags - 1,
@@ -547,9 +528,6 @@ static struct sk_buff *receive_mergeable(struct net_device *dev,
 			skb_add_rx_frag(curr_skb, num_skb_frags, page,
 					offset, len, truesize);
 		}
-	}
-	if (skb_shinfo(head_skb)->nr_frags > 1) {
-		//skb_print(head_skb);
 	}
 
 	ewma_pkt_len_add(&rq->mrg_avg_pkt_len, head_skb->len);
@@ -582,7 +560,6 @@ static void receive_buf(struct virtnet_info *vi, struct receive_queue *rq,
 	struct sk_buff *skb;
 	struct virtio_net_hdr_mrg_rxbuf *hdr;
 
-	//printk(KERN_ERR "entering receive_buf, rq = %p, vi = %p, buf = %p, len = %d \n", rq, vi, buf, len);
 	if (unlikely(len < vi->hdr_len + ETH_HLEN) && !vi->zc) {
 		pr_debug("%s: short packet %i\n", dev->name, len);
 		dev->stats.rx_length_errors++;
@@ -629,17 +606,9 @@ static void receive_buf(struct virtnet_info *vi, struct receive_queue *rq,
 	stats->rx_packets++;
 	u64_stats_update_end(&stats->rx_syncp);
 
-	//printk(KERN_ERR "receive_buf: hdr_flags = %x \n", hdr->hdr.flags);
-	//printk(KERN_ERR "receive_buf: gso_type = %x \n", hdr->hdr.gso_type);
 	if (hdr->hdr.flags & VIRTIO_NET_HDR_F_DATA_VALID) {
-		//printk(KERN_ERR "checksum unnecessary \n");
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
 	}
-	/*
-	else {
-		printk(KERN_ERR "checksum needs to be performed \n");
-	}
-	*/
 
 	if (virtio_net_hdr_to_skb(skb, &hdr->hdr,
 				  virtio_is_little_endian(vi->vdev))) {
@@ -651,21 +620,10 @@ static void receive_buf(struct virtnet_info *vi, struct receive_queue *rq,
 	}
 
 	skb->protocol = eth_type_trans(skb, dev);
-	//printk(KERN_ERR "receive_buf: skb->protocol = %x \n", skb->protocol);
 	pr_debug("Receiving skb proto 0x%04x len %i type %i\n",
 		 ntohs(skb->protocol), skb->len, skb->pkt_type);
 
-	/*
-	if (skb_shinfo(skb)->nr_frags > 1) {
-		printk(KERN_ERR "receive_buf: before napi_gro_receive, skb = %p, nr_frags = %d \n", skb, skb_shinfo(skb)->nr_frags);
-	}
-	*/
 	napi_gro_receive(&rq->napi, skb);
-	/*
-	if (skb_shinfo(skb)->nr_frags > 1) {
-		printk(KERN_ERR "receive_buf: after napi_gro_receive, skb = %p, nr_frags = %d \n", skb, skb_shinfo(skb)->nr_frags);
-	}
-	*/
 	return;
 
 frame_err:
@@ -682,14 +640,11 @@ static int add_recvbuf_full_page(struct virtnet_info *vi, struct receive_queue *
 	struct sk_buff *skb;
 	int err;
 
-	//printk(KERN_ERR "entering add_recvbuf_full_page, vi = %p, rq = %p \n", vi, rq);
-
 	skb = napi_alloc_skb(&rq->napi, GOOD_COPY_LEN);
 	if (unlikely(!skb))
 		return -ENOMEM;
 
 	hdr = skb_vnet_hdr(skb);
-	//printk(KERN_ERR "add_recvbuf_full_page: vnet hdr = %p \n", hdr);
 
 	/* allocate a 4K page for data */
 	page = get_a_page(rq, gfp);
@@ -712,7 +667,6 @@ static int add_recvbuf_full_page(struct virtnet_info *vi, struct receive_queue *
 	/* rq->sg[1] for data packet */
 	sg_set_buf(&rq->sg[1], page_address(page), PAGE_SIZE);
 	sg_mark_end(&rq->sg[1]);
-	//scatterlist_print(rq->sg, 2);
 
 	err = virtqueue_add_inbuf(rq->vq, rq->sg, 2, skb, gfp);
 	if (err < 0) {
@@ -720,7 +674,6 @@ static int add_recvbuf_full_page(struct virtnet_info *vi, struct receive_queue *
 		give_pages(rq, page);
 	}
 
-	//printk(KERN_ERR "exiting add_recvbuf_full_page, err = %d \n", err);
 	return err;
 }
 
@@ -881,7 +834,6 @@ static void skb_recv_done(struct virtqueue *rvq)
 	struct virtnet_info *vi = rvq->vdev->priv;
 	struct receive_queue *rq = &vi->rq[vq2rxq(rvq)];
 
-	//printk(KERN_ERR "entering skb_recv_done \n");
 	/* Schedule NAPI, Suppress further interrupts if successful. */
 	if (napi_schedule_prep(&rq->napi)) {
 		virtqueue_disable_cb(rvq);
